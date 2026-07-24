@@ -14,15 +14,18 @@ from docling.datamodel.pipeline_options_vlm_model import (
 )
 from docling.datamodel.vlm_model_specs import VlmModelType
 from docling_core.types.doc import ImageRefMode
-from docling_jobkit.datamodel.chunking import HybridChunkerOptions
-from docling_jobkit.datamodel.http_inputs import FileSource, HttpSource
-from docling_jobkit.datamodel.s3_coords import S3Coordinates
-from docling_jobkit.datamodel.task_targets import (
+from docling.datamodel.service.requests import (
+    FileSourceRequest,
+    HttpSourceRequest,
+    S3SourceRequest,
+)
+from docling.datamodel.service.targets import (
     InBodyTarget,
     PutTarget,
     S3Target,
     ZipTarget,
 )
+from docling_jobkit.datamodel.chunking import HybridChunkerOptions
 
 from docling_serve.grpc.gen.ai.docling.serve.v1 import docling_serve_types_pb2
 from docling_serve.grpc.mapping import (
@@ -219,9 +222,9 @@ def test_to_task_sources_and_target():
         ]
     )
 
-    assert isinstance(sources[0], FileSource)
-    assert isinstance(sources[1], HttpSource)
-    assert isinstance(sources[2], S3Coordinates)
+    assert isinstance(sources[0], FileSourceRequest)
+    assert isinstance(sources[1], HttpSourceRequest)
+    assert isinstance(sources[2], S3SourceRequest)
 
     assert isinstance(to_task_target(None), InBodyTarget)
     assert isinstance(

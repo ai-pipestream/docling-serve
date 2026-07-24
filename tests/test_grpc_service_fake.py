@@ -943,8 +943,8 @@ def _file_convert_request(num_sources=1, target=None):
 
 
 @pytest.mark.asyncio
-async def test_s3_source_rejected_by_default_policy(grpc_stub):
-    """S3 sources without an S3 target are rejected by default policy."""
+async def test_s3_source_requires_storage_target(grpc_stub):
+    """Expandable S3 sources require a storage/artifact target (not inbody)."""
     request = docling_serve_pb2.ConvertSourceRequest(
         request=docling_serve_types_pb2.ConvertDocumentRequest(
             sources=[
@@ -963,12 +963,16 @@ async def test_s3_source_rejected_by_default_policy(grpc_stub):
     with pytest.raises(grpc.aio.AioRpcError) as exc_info:
         await grpc_stub.ConvertSource(request)
     assert exc_info.value.code() == grpc.StatusCode.INVALID_ARGUMENT
+    assert "require a storage target" in exc_info.value.details()
 
 
 @pytest.mark.asyncio
-async def test_s3_source_requires_s3_target():
-    """An S3 source without an S3 target is rejected."""
-    policy = build_service_policy(docling_serve_settings)
+async def test_s3_source_rejected_when_disallowed():
+    """allowed_source_types can deny S3 even when connectors are installed."""
+    policy = replace(
+        build_service_policy(docling_serve_settings),
+        allowed_source_types=frozenset({"file", "http"}),
+    )
     request = docling_serve_pb2.ConvertSourceRequest(
         request=docling_serve_types_pb2.ConvertDocumentRequest(
             sources=[
@@ -988,8 +992,7 @@ async def test_s3_source_requires_s3_target():
         with pytest.raises(grpc.aio.AioRpcError) as exc_info:
             await stub.ConvertSource(request)
     assert exc_info.value.code() == grpc.StatusCode.INVALID_ARGUMENT
-    assert 'target kind "s3"' in exc_info.value.details()
-
+    assert "source kind 's3' is not allowed" in exc_info.value.details()
 
 @pytest.mark.asyncio
 async def test_policy_rejects_disallowed_target_type():

@@ -24,17 +24,20 @@ from docling_jobkit.datamodel.chunking import (
     HierarchicalChunkerOptions,
     HybridChunkerOptions,
 )
-from docling_jobkit.datamodel.http_inputs import FileSource, HttpSource
-from docling_jobkit.datamodel.s3_coords import S3Coordinates
-from docling_jobkit.datamodel.task import Task
-from docling_jobkit.datamodel.task_meta import TaskStatus
-from docling_jobkit.datamodel.task_targets import (
+from docling.datamodel.service.requests import (
+    FileSourceRequest,
+    HttpSourceRequest,
+    S3SourceRequest,
+)
+from docling.datamodel.service.targets import (
     InBodyTarget,
+    PresignedUrlTarget,
     PutTarget,
     S3Target,
     ZipTarget,
 )
-from docling.datamodel.service.targets import PresignedUrlTarget
+from docling_jobkit.datamodel.task import Task
+from docling_jobkit.datamodel.task_meta import TaskStatus
 
 from docling_serve.datamodel.convert import ConvertDocumentsRequestOptions
 from docling_serve.settings import docling_serve_settings
@@ -80,6 +83,18 @@ def _map_input_format(value: int) -> Optional[InputFormat]:
         "INPUT_FORMAT_LATEX": InputFormat.LATEX,
         "INPUT_FORMAT_VTT": InputFormat.VTT,
         "INPUT_FORMAT_XML_XBRL": InputFormat.XML_XBRL,
+        "INPUT_FORMAT_DOC": InputFormat.DOC,
+        "INPUT_FORMAT_PPT": InputFormat.PPT,
+        "INPUT_FORMAT_XLS": InputFormat.XLS,
+        "INPUT_FORMAT_ODT": InputFormat.ODT,
+        "INPUT_FORMAT_ODS": InputFormat.ODS,
+        "INPUT_FORMAT_ODP": InputFormat.ODP,
+        "INPUT_FORMAT_XML_DOCLANG": InputFormat.XML_DOCLANG,
+        "INPUT_FORMAT_DCLX": InputFormat.DCLX,
+        "INPUT_FORMAT_EMAIL": InputFormat.EMAIL,
+        "INPUT_FORMAT_EPUB": InputFormat.EPUB,
+        "INPUT_FORMAT_VIDEO": InputFormat.VIDEO,
+        "INPUT_FORMAT_BOXNOTE": InputFormat.BOXNOTE,
     }
     return mapping.get(name)
 
@@ -98,6 +113,8 @@ def _map_output_format(value: int) -> Optional[OutputFormat]:
         "OUTPUT_FORMAT_YAML": OutputFormat.YAML,
         "OUTPUT_FORMAT_VTT": OutputFormat.VTT,
         "OUTPUT_FORMAT_DOCLANG": OutputFormat.DOCLANG,
+        "OUTPUT_FORMAT_DCLX": OutputFormat.DCLX,
+        "OUTPUT_FORMAT_CHUNKS": OutputFormat.CHUNKS,
     }
     return mapping.get(name)
 
@@ -243,7 +260,7 @@ def to_task_sources(proto_sources: Iterable[docling_serve_types_pb2.Source]):
         if kind == "file":
             file_src = source.file
             sources.append(
-                FileSource(
+                FileSourceRequest(
                     base64_string=file_src.base64_string,
                     filename=file_src.filename,
                 )
@@ -251,7 +268,7 @@ def to_task_sources(proto_sources: Iterable[docling_serve_types_pb2.Source]):
         elif kind == "http":
             http_src = source.http
             sources.append(
-                HttpSource(
+                HttpSourceRequest(
                     url=http_src.url,
                     headers=dict(http_src.headers),
                 )
@@ -259,7 +276,7 @@ def to_task_sources(proto_sources: Iterable[docling_serve_types_pb2.Source]):
         elif kind == "s3":
             s3_src = source.s3
             sources.append(
-                S3Coordinates(
+                S3SourceRequest(
                     endpoint=s3_src.endpoint,
                     access_key=s3_src.access_key,
                     secret_key=s3_src.secret_key,
