@@ -12,6 +12,7 @@ from docling_serve.grpc.schema_validator import (
     _is_coercion_allowed,
     _types_compatible,
     validate_docling_document_schema,
+    validate_serve_types_schema,
 )
 
 
@@ -19,6 +20,10 @@ def test_validate_passes_on_current_schemas():
     """The validator must pass without exception on the real schemas."""
     validate_docling_document_schema()
 
+
+def test_validate_serve_types_passes_on_current_schemas():
+    """Serve request/option protos must stay aligned with Pydantic models."""
+    validate_serve_types_schema()
 
 def test_no_warnings_on_current_schemas(caplog):
     """Current schemas should validate without missing-field warnings."""

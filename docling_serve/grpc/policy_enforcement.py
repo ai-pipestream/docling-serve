@@ -19,6 +19,7 @@ from docling.datamodel.service.targets import PresignedUrlTarget
 
 from docling_serve.policy import (
     ServicePolicy,
+    _INLINE_SOURCE_KINDS,
     normalize_convert_options,
     validate_convert_options,
     validate_source_kinds,
@@ -60,7 +61,9 @@ def validate_request(
         )
 
     try:
-        validate_source_kinds(sources, policy)
+        # Match REST convert/chunk: inline file/http sources are always allowed;
+        # allowed_source_types gates storage connectors (batch-oriented).
+        validate_source_kinds(sources, policy, skip_kinds=_INLINE_SOURCE_KINDS)
     except HTTPException as exc:
         return str(exc.detail)
 

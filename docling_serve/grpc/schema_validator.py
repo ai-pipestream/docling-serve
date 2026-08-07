@@ -20,7 +20,45 @@ _log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Allowed coercions (spec §6)
 # ---------------------------------------------------------------------------
-ALLOWED_COERCIONS: dict[str, tuple[str, str]] = {}
+ALLOWED_COERCIONS: dict[str, tuple[str, str]] = {
+    # REST stores ocr_engine as a free string; proto uses a closed enum (+ presets).
+    "ocr_engine": ("string", "optional<enum:OcrEngine>"),
+    # Http headers / open scalar bags are Dict[str, Any] in Pydantic.
+    "headers": ("map<string,Any>", "map<string,string>"),
+    "**.params": ("map<string,Any>", "map<string,message:ScalarValue>"),
+    "**.generation_config": ("map<string,Any>", "map<string,message:ScalarValue>"),
+    "**.extra_generation_config": (
+        "map<string,Any>",
+        "map<string,message:ScalarValue>",
+    ),
+    "**.extra_config": ("map<string,Any>", "map<string,message:ScalarValue>"),
+    "ocr_custom_config": ("optional<map<string,Any>>", "map<string,message:ScalarValue>"),
+    "table_structure_custom_config": (
+        "optional<map<string,Any>>",
+        "map<string,message:ScalarValue>",
+    ),
+    "layout_custom_config": (
+        "optional<map<string,Any>>",
+        "map<string,message:ScalarValue>",
+    ),
+    "picture_classification_custom_config": (
+        "optional<map<string,Any>>",
+        "map<string,message:ScalarValue>",
+    ),
+    # Typed custom configs are Union[Model, dict] in Pydantic; gRPC exposes the typed arm.
+    "vlm_pipeline_custom_config": (
+        "union<message:VlmConvertOptions,dict>",
+        "message:VlmConvertOptions",
+    ),
+    "picture_description_custom_config": (
+        "union<message:PictureDescriptionVlmEngineOptions,dict>",
+        "message:PictureDescriptionVlmEngineOptions",
+    ),
+    "code_formula_custom_config": (
+        "union<message:CodeFormulaVlmOptions,dict>",
+        "message:CodeFormulaVlmOptions",
+    ),
+}
 
 # Proto messages that are oneof wrappers around Pydantic-side types.
 # Key = proto message name, Value = set of Pydantic message names it wraps.
@@ -59,7 +97,7 @@ _TUPLE_MESSAGE_EQUIVALENCES: dict[str, str] = {
 }
 
 # Types that are string-serializable and compatible with proto string.
-_STRING_COMPATIBLE_TYPES: set[str] = {"Path"}
+_STRING_COMPATIBLE_TYPES: set[str] = {"Path", "SecretStr", "HttpUrl", "AnyUrl"}
 
 # ---------------------------------------------------------------------------
 # Suppression rulesets
@@ -115,6 +153,8 @@ _PROTO_LEAF_MESSAGES: set[str] = {
     "IntSpan",
     "FloatPair",
     "StringIntPair",
+    # Serve ScalarValue is a closed scalar oneof; Pydantic uses Dict[str, Any].
+    "ScalarValue",
 }
 
 # Proto paths that exist as named fields on the proto side but are
@@ -148,6 +188,21 @@ _PYDANTIC_ONLY_DISCRIMINATORS: dict[str, set[str]] = {
     # TrackSource is wrapped by SourceType (oneof source { TrackSource track = 1 }).
     # The Pydantic side has `kind: Literal["track"]` for the discriminator.
     "TrackSource": {"kind"},
+    # Serve source/target kinds are encoded as the parent Source/Target oneof tag.
+    "FileSource": {"kind"},
+    "HttpSource": {"kind"},
+    "S3Source": {"kind"},
+    "AzureBlobSource": {"kind"},
+    "GoogleCloudStorageSource": {"kind"},
+    "GoogleDriveSource": {"kind"},
+    "InBodyTarget": {"kind"},
+    "ZipTarget": {"kind"},
+    "S3Target": {"kind"},
+    "PutTarget": {"kind"},
+    "PreSignedUrlTarget": {"kind"},
+    "AzureBlobTarget": {"kind"},
+    "GoogleCloudStorageTarget": {"kind"},
+    "GoogleDriveTarget": {"kind"},
 }
 
 
@@ -694,6 +749,13 @@ def _types_compatible(pydantic_canonical: str, proto_canonical: str) -> bool:
         if expected_msg == proto_msg_name:
             return True
 
+    # SecretStr / Path / URL types serialize as proto string on the wire.
+    if (
+        pydantic_canonical in _STRING_COMPATIBLE_TYPES
+        and proto_canonical == "string"
+    ):
+        return True
+
     # Union containing string-compatible types ↔ string
     # e.g. union<string,Path> ↔ string (Path serializes to string on the wire)
     if pydantic_canonical.startswith("union<") and proto_canonical == "string":
@@ -765,7 +827,17 @@ def _check_cardinality(
     py_is_map = pydantic_canonical.startswith("map<")
     py_is_union = pydantic_canonical.startswith("union<")
 
-    if proto_is_list and not py_is_list and not pydantic_canonical.startswith("tuple<"):
+    # optional<list<T>> is list-like for proto3 repeated fields (absent => empty).
+    py_is_optional_list = (
+        pydantic_canonical.startswith("optional<list<")
+        and pydantic_canonical.endswith(">")
+    )
+    if (
+        proto_is_list
+        and not py_is_list
+        and not py_is_optional_list
+        and not pydantic_canonical.startswith("tuple<")
+    ):
         return (
             f"Cardinality mismatch at '{path}': proto is repeated ({proto_canonical}) "
             f"but Pydantic is not list-like ({pydantic_canonical})"
@@ -942,4 +1014,126 @@ def validate_docling_document_schema() -> None:
         "DoclingDocument schema validation passed: %d Pydantic fields, %d proto fields",
         len(pydantic_fields),
         len(proto_fields),
+    )
+
+
+def validate_serve_types_schema() -> None:
+    """Compare serve request models against docling_serve_types proto descriptors.
+
+    Raises RuntimeError on incompatible type mismatches (not in allowlist).
+    Logs warnings for missing fields.
+    """
+    from docling.datamodel.service.options import ConvertDocumentsOptions
+    from docling.datamodel.service.requests import (
+        AzureBlobSourceRequest,
+        FileSourceRequest,
+        GenericSourceRequest,
+        GoogleCloudStorageSourceRequest,
+        GoogleDriveSourceRequest,
+        HttpSourceRequest,
+        S3SourceRequest,
+    )
+    from docling.datamodel.service.targets import (
+        AzureBlobTarget,
+        GoogleCloudStorageTarget,
+        GoogleDriveTarget,
+        InBodyTarget,
+        PresignedUrlTarget,
+        PutTarget,
+        S3Target,
+        ZipTarget,
+    )
+
+    from docling_serve.policy import ALL_SOURCE_TYPES, ALL_TARGET_TYPES
+
+    from .gen.ai.docling.serve.v1 import docling_serve_types_pb2 as pb2
+
+    pairs: list[tuple[type, str]] = [
+        (ConvertDocumentsOptions, "ConvertDocumentOptions"),
+        (FileSourceRequest, "FileSource"),
+        (HttpSourceRequest, "HttpSource"),
+        (S3SourceRequest, "S3Source"),
+        (AzureBlobSourceRequest, "AzureBlobSource"),
+        (GoogleCloudStorageSourceRequest, "GoogleCloudStorageSource"),
+        (GoogleDriveSourceRequest, "GoogleDriveSource"),
+        (GenericSourceRequest, "GenericSource"),
+        (InBodyTarget, "InBodyTarget"),
+        (ZipTarget, "ZipTarget"),
+        (S3Target, "S3Target"),
+        (PutTarget, "PutTarget"),
+        (PresignedUrlTarget, "PreSignedUrlTarget"),
+        (AzureBlobTarget, "AzureBlobTarget"),
+        (GoogleCloudStorageTarget, "GoogleCloudStorageTarget"),
+        (GoogleDriveTarget, "GoogleDriveTarget"),
+    ]
+
+    mismatches: list[str] = []
+    allowed: list[str] = []
+    missing_proto: list[str] = []
+    missing_pydantic: list[str] = []
+    total_py = 0
+    total_pr = 0
+
+    for model_cls, proto_name in pairs:
+        descriptor = pb2.DESCRIPTOR.message_types_by_name.get(proto_name)
+        if descriptor is None:
+            mismatches.append(f"Missing proto message '{proto_name}' for {model_cls.__name__}")
+            continue
+        py_fields = _collect_pydantic_fields(model_cls)
+        pr_fields = _collect_proto_fields(descriptor)
+        total_py += len(py_fields)
+        total_pr += len(pr_fields)
+        # Context uses the proto message name so discriminator suppressions
+        # (_PYDANTIC_ONLY_DISCRIMINATORS) resolve against wire message names.
+        m, a, mp, md = _compare_fields(py_fields, pr_fields, context=f"{proto_name}.")
+        mismatches.extend(m)
+        allowed.extend(a)
+        missing_proto.extend(mp)
+        missing_pydantic.extend(md)
+
+    # Oneof arm coverage vs policy connector kinds (generic is plugin escape hatch).
+    source_arms = {
+        f.name for f in pb2.Source.DESCRIPTOR.oneofs_by_name["source"].fields
+    }
+    target_arms = {
+        f.name for f in pb2.Target.DESCRIPTOR.oneofs_by_name["target"].fields
+    }
+    expected_sources = set(ALL_SOURCE_TYPES) | {"generic"}
+    expected_targets = set(ALL_TARGET_TYPES)
+    missing_source_arms = sorted(expected_sources - source_arms)
+    missing_target_arms = sorted(expected_targets - target_arms)
+    if missing_source_arms:
+        mismatches.append(f"Source oneof missing arms: {missing_source_arms}")
+    if missing_target_arms:
+        mismatches.append(f"Target oneof missing arms: {missing_target_arms}")
+
+    if missing_proto:
+        _log.warning(
+            "Serve fields in Pydantic but not in proto (%d): %s",
+            len(missing_proto),
+            ", ".join(missing_proto),
+        )
+    if missing_pydantic:
+        _log.warning(
+            "Serve fields in proto but not in Pydantic (%d): %s",
+            len(missing_pydantic),
+            ", ".join(missing_pydantic),
+        )
+    if allowed:
+        _log.info(
+            "Serve allowed coercions (%d): %s",
+            len(allowed),
+            "; ".join(allowed),
+        )
+    if mismatches:
+        detail = "\n  ".join(mismatches)
+        raise RuntimeError(
+            f"Serve types schema validation failed with {len(mismatches)} "
+            f"issue(s):\n  {detail}"
+        )
+
+    _log.info(
+        "Serve types schema validation passed: %d Pydantic fields, %d proto fields",
+        total_py,
+        total_pr,
     )

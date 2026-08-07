@@ -880,9 +880,13 @@ class PublicErrorInterceptor(grpc.aio.ServerInterceptor):
 async def serve(host: str, port: int) -> None:
     from grpc_reflection.v1alpha import reflection
 
-    from .schema_validator import validate_docling_document_schema
+    from .schema_validator import (
+        validate_docling_document_schema,
+        validate_serve_types_schema,
+    )
 
     validate_docling_document_schema()
+    validate_serve_types_schema()
 
     options = [
         ("grpc.max_send_message_length", 2 * 1024 * 1024 * 1024 - 1),  # 2 GB

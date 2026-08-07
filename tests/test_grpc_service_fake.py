@@ -1038,7 +1038,10 @@ async def test_omitted_target_prefers_presigned_when_artifacts_enabled():
 
     assert response.response.document.doc.schema_name == "DoclingDocument"
     [task] = orchestrator.tasks.values()
-    assert task.target.kind == "presigned_url"
+    # jobkit Task now stores the resolved target on `targets` (singular `target`
+    # is a deprecated convenience that may remain unset).
+    resolved = task.targets or ([task.target] if task.target is not None else [])
+    assert resolved and resolved[0].kind == "presigned_url"
 
 
 @pytest.mark.asyncio

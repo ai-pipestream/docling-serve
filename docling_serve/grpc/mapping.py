@@ -4,37 +4,66 @@ import logging
 from collections.abc import Iterable
 from typing import Optional
 
-from google.protobuf import json_format
-
 from docling.datamodel.base_models import InputFormat, OutputFormat
 from docling.datamodel.pipeline_options import (
+    CodeFormulaVlmOptions,
+    HeadingHierarchyOptions,
     PdfBackend,
+    PictureDescriptionVlmEngineOptions,
     ProcessingPipeline,
     TableFormerMode,
+    VlmConvertOptions,
 )
 from docling.datamodel.pipeline_options_vlm_model import (
     InferenceFramework,
     ResponseFormat,
     TransformersModelType,
 )
-from docling.datamodel.vlm_model_specs import VlmModelType
-from docling.utils.profiling import ProfilingItem
-from docling_core.types.doc import ImageRefMode
-from docling_jobkit.datamodel.chunking import (
-    HierarchicalChunkerOptions,
-    HybridChunkerOptions,
+from docling.datamodel.service.options import (
+    PictureDescriptionApi,
+    PictureDescriptionLocal,
+    VlmModelApi,
+    VlmModelLocal,
 )
 from docling.datamodel.service.requests import (
+    AzureBlobSourceRequest,
     FileSourceRequest,
+    GenericSourceRequest,
+    GoogleCloudStorageSourceRequest,
+    GoogleDriveSourceRequest,
     HttpSourceRequest,
     S3SourceRequest,
 )
+from docling.datamodel.service.sources import (
+    GoogleCloudStorageServiceAccountInfo,
+    GoogleDriveCredentials,
+)
 from docling.datamodel.service.targets import (
+    AzureBlobTarget,
+    GoogleCloudStorageTarget,
+    GoogleDriveTarget,
     InBodyTarget,
     PresignedUrlTarget,
     PutTarget,
     S3Target,
     ZipTarget,
+)
+from docling.datamodel.stage_model_specs import (
+    ApiModelConfig,
+    EngineModelConfig,
+    VlmModelSpec,
+)
+from docling.datamodel.vlm_model_specs import VlmModelType
+from docling.models.inference_engines.vlm.base import (
+    BaseVlmEngineOptions,
+    VlmEngineType,
+)
+from docling.utils.profiling import ProfilingItem
+from docling_core.types.doc import ImageRefMode
+from docling_core.types.doc.labels import PictureClassificationLabel
+from docling_jobkit.datamodel.chunking import (
+    HierarchicalChunkerOptions,
+    HybridChunkerOptions,
 )
 from docling_jobkit.datamodel.task import Task
 from docling_jobkit.datamodel.task_meta import TaskStatus
@@ -247,10 +276,271 @@ def _map_transformers_model_type(value: int) -> Optional[TransformersModelType]:
     return mapping.get(name)
 
 
-def _value_to_python(value) -> object:
-    if value is None:
+def _scalar_value_to_python(value: docling_serve_types_pb2.ScalarValue):
+    """Decode a ScalarValue oneof to a Python scalar (no JSON)."""
+    kind = value.WhichOneof("kind")
+    if kind == "string_value":
+        return value.string_value
+    if kind == "int_value":
+        return value.int_value
+    if kind == "double_value":
+        return value.double_value
+    if kind == "bool_value":
+        return value.bool_value
+    return None
+
+
+def _scalar_map_to_dict(proto_map) -> dict:
+    return {k: _scalar_value_to_python(v) for k, v in proto_map.items()}
+
+
+def _map_picture_classification_labels(values) -> list[PictureClassificationLabel]:
+    out: list[PictureClassificationLabel] = []
+    for value in values:
+        name = _enum_name(docling_serve_types_pb2.PictureClassificationLabel, value)
+        if not name or name.endswith("_UNSPECIFIED"):
+            continue
+        member = name.removeprefix("PICTURE_CLASSIFICATION_LABEL_")
+        try:
+            out.append(PictureClassificationLabel[member])
+        except KeyError:
+            continue
+    return out
+
+
+def _map_vlm_engine_type(value: int) -> Optional[VlmEngineType]:
+    name = _enum_name(docling_serve_types_pb2.VlmEngineType, value)
+    if not name:
         return None
-    return json_format.MessageToDict(value, preserving_proto_field_name=True)
+    mapping = {
+        "VLM_ENGINE_TYPE_TRANSFORMERS": VlmEngineType.TRANSFORMERS,
+        "VLM_ENGINE_TYPE_MLX": VlmEngineType.MLX,
+        "VLM_ENGINE_TYPE_VLLM": VlmEngineType.VLLM,
+        "VLM_ENGINE_TYPE_API": VlmEngineType.API,
+        "VLM_ENGINE_TYPE_API_OLLAMA": VlmEngineType.API_OLLAMA,
+        "VLM_ENGINE_TYPE_API_LMSTUDIO": VlmEngineType.API_LMSTUDIO,
+        "VLM_ENGINE_TYPE_API_OPENAI": VlmEngineType.API_OPENAI,
+        "VLM_ENGINE_TYPE_AUTO_INLINE": VlmEngineType.AUTO_INLINE,
+    }
+    return mapping.get(name)
+
+
+def _to_service_account_info(proto) -> GoogleCloudStorageServiceAccountInfo:
+    data = {
+        "project_id": proto.project_id,
+        "private_key_id": proto.private_key_id,
+        "private_key": proto.private_key,
+        "client_email": proto.client_email,
+        "client_id": proto.client_id,
+        "auth_uri": proto.auth_uri,
+        "token_uri": proto.token_uri,
+        "auth_provider_x509_cert_url": proto.auth_provider_x509_cert_url,
+        "client_x509_cert_url": proto.client_x509_cert_url,
+    }
+    if proto.HasField("universe_domain"):
+        data["universe_domain"] = proto.universe_domain
+    return GoogleCloudStorageServiceAccountInfo.model_validate(data)
+
+
+def _to_google_drive_credentials(proto) -> GoogleDriveCredentials:
+    return GoogleDriveCredentials.model_validate(
+        {
+            "client_id": proto.client_id,
+            "project_id": proto.project_id,
+            "auth_uri": proto.auth_uri,
+            "token_uri": proto.token_uri,
+            "auth_provider_x509_cert_url": proto.auth_provider_x509_cert_url,
+            "client_secret": proto.client_secret,
+            "redirect_uris": list(proto.redirect_uris),
+        }
+    )
+
+
+def _to_engine_model_config(proto) -> EngineModelConfig:
+    data: dict = {}
+    if proto.HasField("repo_id"):
+        data["repo_id"] = proto.repo_id
+    if proto.HasField("revision"):
+        data["revision"] = proto.revision
+    if proto.HasField("torch_dtype"):
+        data["torch_dtype"] = proto.torch_dtype
+    if proto.extra_config:
+        data["extra_config"] = _scalar_map_to_dict(proto.extra_config)
+    return EngineModelConfig.model_validate(data)
+
+
+def _to_api_model_config(proto) -> ApiModelConfig:
+    data: dict = {}
+    if proto.params:
+        data["params"] = _scalar_map_to_dict(proto.params)
+    return ApiModelConfig.model_validate(data)
+
+
+def _to_vlm_model_spec(proto) -> VlmModelSpec:
+    data: dict = {
+        "name": proto.name,
+        "default_repo_id": proto.default_repo_id,
+    }
+    if proto.HasField("revision"):
+        data["revision"] = proto.revision
+    if proto.HasField("prompt"):
+        data["prompt"] = proto.prompt
+    if proto.HasField("response_format"):
+        val = _map_response_format(proto.response_format)
+        if val is not None:
+            data["response_format"] = val
+    if proto.supported_engines:
+        engines = [
+            e for e in (_map_vlm_engine_type(v) for v in proto.supported_engines) if e
+        ]
+        if engines:
+            data["supported_engines"] = set(engines)
+    if proto.engine_overrides:
+        data["engine_overrides"] = {
+            eng: _to_engine_model_config(entry.config)
+            for entry in proto.engine_overrides
+            if (eng := _map_vlm_engine_type(entry.engine_type)) is not None
+        }
+    if proto.api_overrides:
+        data["api_overrides"] = {
+            eng: _to_api_model_config(entry.config)
+            for entry in proto.api_overrides
+            if (eng := _map_vlm_engine_type(entry.engine_type)) is not None
+        }
+    if proto.HasField("trust_remote_code"):
+        data["trust_remote_code"] = proto.trust_remote_code
+    if proto.stop_strings:
+        data["stop_strings"] = list(proto.stop_strings)
+    if proto.HasField("temperature"):
+        data["temperature"] = proto.temperature
+    if proto.HasField("max_new_tokens"):
+        data["max_new_tokens"] = proto.max_new_tokens
+    if proto.extra_generation_config:
+        data["extra_generation_config"] = _scalar_map_to_dict(
+            proto.extra_generation_config
+        )
+    return VlmModelSpec.model_validate(data)
+
+
+def _to_base_vlm_engine_options(proto) -> BaseVlmEngineOptions:
+    engine = _map_vlm_engine_type(proto.engine_type) or VlmEngineType.TRANSFORMERS
+    return BaseVlmEngineOptions(engine_type=engine)
+
+
+def _to_vlm_convert_options(proto) -> VlmConvertOptions:
+    data: dict = {
+        "engine_options": _to_base_vlm_engine_options(proto.engine_options),
+        "model_spec": _to_vlm_model_spec(proto.model_spec),
+    }
+    if proto.HasField("scale"):
+        data["scale"] = proto.scale
+    if proto.HasField("max_size"):
+        data["max_size"] = proto.max_size
+    if proto.HasField("batch_size"):
+        data["batch_size"] = proto.batch_size
+    if proto.HasField("force_backend_text"):
+        data["force_backend_text"] = proto.force_backend_text
+    return VlmConvertOptions.model_validate(data)
+
+
+def _to_picture_description_vlm_engine_options(
+    proto,
+) -> PictureDescriptionVlmEngineOptions:
+    data: dict = {
+        "engine_options": _to_base_vlm_engine_options(proto.engine_options),
+        "model_spec": _to_vlm_model_spec(proto.model_spec),
+    }
+    if proto.HasField("batch_size"):
+        data["batch_size"] = proto.batch_size
+    if proto.HasField("scale"):
+        data["scale"] = proto.scale
+    if proto.HasField("picture_area_threshold"):
+        data["picture_area_threshold"] = proto.picture_area_threshold
+    if proto.classification_allow:
+        data["classification_allow"] = _map_picture_classification_labels(
+            proto.classification_allow
+        )
+    if proto.classification_deny:
+        data["classification_deny"] = _map_picture_classification_labels(
+            proto.classification_deny
+        )
+    if proto.HasField("classification_min_confidence"):
+        data["classification_min_confidence"] = proto.classification_min_confidence
+    if proto.HasField("prompt"):
+        data["prompt"] = proto.prompt
+    if proto.generation_config:
+        data["generation_config"] = _scalar_map_to_dict(proto.generation_config)
+    return PictureDescriptionVlmEngineOptions.model_validate(data)
+
+
+def _to_code_formula_vlm_options(proto) -> CodeFormulaVlmOptions:
+    data: dict = {
+        "engine_options": _to_base_vlm_engine_options(proto.engine_options),
+        "model_spec": _to_vlm_model_spec(proto.model_spec),
+    }
+    if proto.HasField("scale"):
+        data["scale"] = proto.scale
+    if proto.HasField("max_size"):
+        data["max_size"] = proto.max_size
+    if proto.HasField("extract_code"):
+        data["extract_code"] = proto.extract_code
+    if proto.HasField("extract_formulas"):
+        data["extract_formulas"] = proto.extract_formulas
+    return CodeFormulaVlmOptions.model_validate(data)
+
+
+def _to_vlm_model_local(proto) -> VlmModelLocal:
+    data: dict = {}
+    if proto.HasField("repo_id"):
+        data["repo_id"] = proto.repo_id
+    if proto.HasField("prompt"):
+        data["prompt"] = proto.prompt
+    if proto.HasField("scale"):
+        data["scale"] = proto.scale
+    if proto.HasField("response_format"):
+        val = _map_response_format(proto.response_format)
+        if val is not None:
+            data["response_format"] = val
+    if proto.HasField("inference_framework"):
+        val = _map_inference_framework(proto.inference_framework)
+        if val is not None:
+            data["inference_framework"] = val
+    if proto.HasField("transformers_model_type"):
+        val = _map_transformers_model_type(proto.transformers_model_type)
+        if val is not None:
+            data["transformers_model_type"] = val
+    if proto.extra_generation_config:
+        data["extra_generation_config"] = _scalar_map_to_dict(
+            proto.extra_generation_config
+        )
+    if proto.HasField("temperature"):
+        data["temperature"] = proto.temperature
+    return VlmModelLocal.model_validate(data)
+
+
+def _to_vlm_model_api(proto) -> VlmModelApi:
+    data: dict = {}
+    if proto.HasField("url"):
+        data["url"] = proto.url
+    if proto.headers:
+        data["headers"] = dict(proto.headers)
+    if proto.params:
+        data["params"] = _scalar_map_to_dict(proto.params)
+    if proto.HasField("timeout"):
+        data["timeout"] = proto.timeout
+    if proto.HasField("concurrency"):
+        data["concurrency"] = proto.concurrency
+    if proto.HasField("prompt"):
+        data["prompt"] = proto.prompt
+    if proto.HasField("scale"):
+        data["scale"] = proto.scale
+    if proto.HasField("response_format"):
+        val = _map_response_format(proto.response_format)
+        if val is not None:
+            data["response_format"] = val
+    if proto.HasField("temperature"):
+        data["temperature"] = proto.temperature
+    return VlmModelApi.model_validate(data)
 
 
 def to_task_sources(proto_sources: Iterable[docling_serve_types_pb2.Source]):
@@ -275,21 +565,67 @@ def to_task_sources(proto_sources: Iterable[docling_serve_types_pb2.Source]):
             )
         elif kind == "s3":
             s3_src = source.s3
-            sources.append(
-                S3SourceRequest(
-                    endpoint=s3_src.endpoint,
-                    access_key=s3_src.access_key,
-                    secret_key=s3_src.secret_key,
-                    bucket=s3_src.bucket,
-                    key_prefix=s3_src.key_prefix
-                    if s3_src.HasField("key_prefix")
-                    else "",
-                    verify_ssl=s3_src.verify_ssl,
+            data = {
+                "endpoint": s3_src.endpoint,
+                "access_key": s3_src.access_key,
+                "secret_key": s3_src.secret_key,
+                "bucket": s3_src.bucket,
+                "key_prefix": s3_src.key_prefix
+                if s3_src.HasField("key_prefix")
+                else "",
+                "verify_ssl": s3_src.verify_ssl,
+            }
+            if s3_src.HasField("max_num_elements"):
+                data["max_num_elements"] = s3_src.max_num_elements
+            sources.append(S3SourceRequest.model_validate(data))
+        elif kind == "azure_blob":
+            az = source.azure_blob
+            data = {
+                "account_name": az.account_name,
+                "container": az.container,
+                "connection_string": az.connection_string,
+            }
+            if az.HasField("blob_prefix"):
+                data["blob_prefix"] = az.blob_prefix
+            if az.HasField("max_num_elements"):
+                data["max_num_elements"] = az.max_num_elements
+            sources.append(AzureBlobSourceRequest.model_validate(data))
+        elif kind == "google_cloud_storage":
+            gcs = source.google_cloud_storage
+            data = {"bucket": gcs.bucket}
+            if gcs.HasField("key_prefix"):
+                data["key_prefix"] = gcs.key_prefix
+            if gcs.HasField("max_num_elements"):
+                data["max_num_elements"] = gcs.max_num_elements
+            if gcs.HasField("project"):
+                data["project"] = gcs.project
+            if gcs.HasField("service_account_key"):
+                data["service_account_key"] = _to_service_account_info(
+                    gcs.service_account_key
                 )
-            )
+            sources.append(GoogleCloudStorageSourceRequest.model_validate(data))
+        elif kind == "google_drive":
+            gd = source.google_drive
+            data = {"path_id": gd.path_id}
+            if gd.HasField("token_path"):
+                data["token_path"] = gd.token_path
+            if gd.HasField("refresh_token"):
+                data["refresh_token"] = gd.refresh_token
+            if gd.HasField("credentials_path"):
+                data["credentials_path"] = gd.credentials_path
+            if gd.HasField("credentials"):
+                data["credentials"] = _to_google_drive_credentials(gd.credentials)
+            sources.append(GoogleDriveSourceRequest.model_validate(data))
+        elif kind == "generic":
+            gen = source.generic
+            payload = {"kind": gen.kind}
+            payload.update(_scalar_map_to_dict(gen.attributes))
+            sources.append(GenericSourceRequest.model_validate(payload))
         else:
             raise ValueError(
-                f"Source at index {i} has no variant set (expected file, http, or s3)."
+                f"Source at index {i} has no variant set "
+                "(expected file, http, s3, azure_blob, google_cloud_storage, "
+                "google_drive, or generic)."
             )
     return sources
 
@@ -304,16 +640,57 @@ def to_task_target(proto_target: Optional[docling_serve_types_pb2.Target]):
         return PutTarget(url=proto_target.put.url)
     if kind == "s3":
         s3_tgt = proto_target.s3
-        return S3Target(
-            endpoint=s3_tgt.endpoint,
-            access_key=s3_tgt.access_key,
-            secret_key=s3_tgt.secret_key,
-            bucket=s3_tgt.bucket,
-            key_prefix=s3_tgt.key_prefix if s3_tgt.HasField("key_prefix") else "",
-            verify_ssl=s3_tgt.verify_ssl,
-        )
+        data = {
+            "endpoint": s3_tgt.endpoint,
+            "access_key": s3_tgt.access_key,
+            "secret_key": s3_tgt.secret_key,
+            "bucket": s3_tgt.bucket,
+            "key_prefix": s3_tgt.key_prefix if s3_tgt.HasField("key_prefix") else "",
+            "verify_ssl": s3_tgt.verify_ssl,
+        }
+        if s3_tgt.HasField("max_num_elements"):
+            data["max_num_elements"] = s3_tgt.max_num_elements
+        return S3Target.model_validate(data)
     if kind == "presigned_url":
         return PresignedUrlTarget()
+    if kind == "azure_blob":
+        az = proto_target.azure_blob
+        data = {
+            "account_name": az.account_name,
+            "container": az.container,
+            "connection_string": az.connection_string,
+        }
+        if az.HasField("blob_prefix"):
+            data["blob_prefix"] = az.blob_prefix
+        if az.HasField("max_num_elements"):
+            data["max_num_elements"] = az.max_num_elements
+        return AzureBlobTarget.model_validate(data)
+    if kind == "google_cloud_storage":
+        gcs = proto_target.google_cloud_storage
+        data = {"bucket": gcs.bucket}
+        if gcs.HasField("key_prefix"):
+            data["key_prefix"] = gcs.key_prefix
+        if gcs.HasField("max_num_elements"):
+            data["max_num_elements"] = gcs.max_num_elements
+        if gcs.HasField("project"):
+            data["project"] = gcs.project
+        if gcs.HasField("service_account_key"):
+            data["service_account_key"] = _to_service_account_info(
+                gcs.service_account_key
+            )
+        return GoogleCloudStorageTarget.model_validate(data)
+    if kind == "google_drive":
+        gd = proto_target.google_drive
+        data = {"path_id": gd.path_id}
+        if gd.HasField("token_path"):
+            data["token_path"] = gd.token_path
+        if gd.HasField("refresh_token"):
+            data["refresh_token"] = gd.refresh_token
+        if gd.HasField("credentials_path"):
+            data["credentials_path"] = gd.credentials_path
+        if gd.HasField("credentials"):
+            data["credentials"] = _to_google_drive_credentials(gd.credentials)
+        return GoogleDriveTarget.model_validate(data)
     return InBodyTarget()
 
 
@@ -392,9 +769,9 @@ def to_convert_options(
         if val is not None:
             data["pipeline"] = val
 
-    if proto_options.page_range:
-        if len(proto_options.page_range) == 2:
-            data["page_range"] = tuple(proto_options.page_range)
+    if proto_options.HasField("page_range"):
+        span = proto_options.page_range
+        data["page_range"] = (span.start, span.end)
 
     if proto_options.HasField("document_timeout"):
         data["document_timeout"] = proto_options.document_timeout
@@ -437,10 +814,24 @@ def to_convert_options(
         if local.HasField("prompt"):
             local_data["prompt"] = local.prompt
         if local.generation_config:
-            local_data["generation_config"] = {
-                k: _value_to_python(v) for k, v in local.generation_config.items()
-            }
-        data["picture_description_local"] = local_data
+            local_data["generation_config"] = _scalar_map_to_dict(
+                local.generation_config
+            )
+        if local.classification_allow:
+            local_data["classification_allow"] = _map_picture_classification_labels(
+                local.classification_allow
+            )
+        if local.classification_deny:
+            local_data["classification_deny"] = _map_picture_classification_labels(
+                local.classification_deny
+            )
+        if local.HasField("classification_min_confidence"):
+            local_data["classification_min_confidence"] = (
+                local.classification_min_confidence
+            )
+        data["picture_description_local"] = PictureDescriptionLocal.model_validate(
+            local_data
+        )
 
     if proto_options.HasField("picture_description_api"):
         api = proto_options.picture_description_api
@@ -448,14 +839,26 @@ def to_convert_options(
         if api.headers:
             api_data["headers"] = dict(api.headers)
         if api.params:
-            api_data["params"] = {k: _value_to_python(v) for k, v in api.params.items()}
+            api_data["params"] = _scalar_map_to_dict(api.params)
         if api.HasField("timeout"):
             api_data["timeout"] = api.timeout
         if api.HasField("concurrency"):
             api_data["concurrency"] = api.concurrency
         if api.HasField("prompt"):
             api_data["prompt"] = api.prompt
-        data["picture_description_api"] = api_data
+        if api.classification_allow:
+            api_data["classification_allow"] = _map_picture_classification_labels(
+                api.classification_allow
+            )
+        if api.classification_deny:
+            api_data["classification_deny"] = _map_picture_classification_labels(
+                api.classification_deny
+            )
+        if api.HasField("classification_min_confidence"):
+            api_data["classification_min_confidence"] = (
+                api.classification_min_confidence
+            )
+        data["picture_description_api"] = PictureDescriptionApi.model_validate(api_data)
 
     if proto_options.HasField("vlm_pipeline_model"):
         val = _map_vlm_model_type(proto_options.vlm_pipeline_model)
@@ -463,20 +866,14 @@ def to_convert_options(
             data["vlm_pipeline_model"] = val
 
     if proto_options.HasField("vlm_pipeline_model_local"):
-        if proto_options.vlm_pipeline_model_local:
-            data["vlm_pipeline_model_local"] = {
-                "repo_id": proto_options.vlm_pipeline_model_local,
-                "inference_framework": InferenceFramework.TRANSFORMERS,
-                "response_format": ResponseFormat.DOCTAGS,
-                "transformers_model_type": TransformersModelType.AUTOMODEL,
-            }
+        data["vlm_pipeline_model_local"] = _to_vlm_model_local(
+            proto_options.vlm_pipeline_model_local
+        )
 
     if proto_options.HasField("vlm_pipeline_model_api"):
-        if proto_options.vlm_pipeline_model_api:
-            data["vlm_pipeline_model_api"] = {
-                "url": proto_options.vlm_pipeline_model_api,
-                "response_format": ResponseFormat.DOCTAGS,
-            }
+        data["vlm_pipeline_model_api"] = _to_vlm_model_api(
+            proto_options.vlm_pipeline_model_api
+        )
 
     if proto_options.HasField("do_chart_extraction"):
         data["do_chart_extraction"] = proto_options.do_chart_extraction
@@ -491,43 +888,37 @@ def to_convert_options(
         data["code_formula_preset"] = proto_options.code_formula_preset
 
     if proto_options.HasField("vlm_pipeline_custom_config"):
-        data["vlm_pipeline_custom_config"] = json_format.MessageToDict(
-            proto_options.vlm_pipeline_custom_config,
-            preserving_proto_field_name=True,
+        data["vlm_pipeline_custom_config"] = _to_vlm_convert_options(
+            proto_options.vlm_pipeline_custom_config
         )
 
     if proto_options.HasField("picture_description_custom_config"):
-        data["picture_description_custom_config"] = json_format.MessageToDict(
-            proto_options.picture_description_custom_config,
-            preserving_proto_field_name=True,
+        data["picture_description_custom_config"] = (
+            _to_picture_description_vlm_engine_options(
+                proto_options.picture_description_custom_config
+            )
         )
 
     if proto_options.HasField("code_formula_custom_config"):
-        data["code_formula_custom_config"] = json_format.MessageToDict(
-            proto_options.code_formula_custom_config,
-            preserving_proto_field_name=True,
+        data["code_formula_custom_config"] = _to_code_formula_vlm_options(
+            proto_options.code_formula_custom_config
         )
 
-    if proto_options.HasField("table_structure_custom_config"):
-        data["table_structure_custom_config"] = json_format.MessageToDict(
-            proto_options.table_structure_custom_config,
-            preserving_proto_field_name=True,
+    if proto_options.table_structure_custom_config:
+        data["table_structure_custom_config"] = _scalar_map_to_dict(
+            proto_options.table_structure_custom_config
         )
 
-    if proto_options.HasField("layout_custom_config"):
-        data["layout_custom_config"] = json_format.MessageToDict(
-            proto_options.layout_custom_config,
-            preserving_proto_field_name=True,
+    if proto_options.layout_custom_config:
+        data["layout_custom_config"] = _scalar_map_to_dict(
+            proto_options.layout_custom_config
         )
 
     if proto_options.HasField("ocr_preset"):
         data["ocr_preset"] = proto_options.ocr_preset
 
-    if proto_options.HasField("ocr_custom_config"):
-        data["ocr_custom_config"] = json_format.MessageToDict(
-            proto_options.ocr_custom_config,
-            preserving_proto_field_name=True,
-        )
+    if proto_options.ocr_custom_config:
+        data["ocr_custom_config"] = _scalar_map_to_dict(proto_options.ocr_custom_config)
 
     if proto_options.HasField("table_structure_preset"):
         data["table_structure_preset"] = proto_options.table_structure_preset
@@ -540,13 +931,44 @@ def to_convert_options(
             proto_options.picture_classification_preset
         )
 
-    if proto_options.HasField("picture_classification_custom_config"):
-        data["picture_classification_custom_config"] = json_format.MessageToDict(
-            proto_options.picture_classification_custom_config,
-            preserving_proto_field_name=True,
+    if proto_options.picture_classification_custom_config:
+        data["picture_classification_custom_config"] = _scalar_map_to_dict(
+            proto_options.picture_classification_custom_config
+        )
+
+    if proto_options.HasField("include_page_images"):
+        data["include_page_images"] = proto_options.include_page_images
+
+    if proto_options.HasField("do_pdf_heading_hierarchy"):
+        data["do_pdf_heading_hierarchy"] = proto_options.do_pdf_heading_hierarchy
+
+    if proto_options.HasField("pdf_heading_hierarchy_options"):
+        data["pdf_heading_hierarchy_options"] = _to_heading_hierarchy_options(
+            proto_options.pdf_heading_hierarchy_options
         )
 
     return ConvertDocumentsRequestOptions.model_validate(data)
+
+
+def _to_heading_hierarchy_options(
+    proto: docling_serve_types_pb2.HeadingHierarchyOptions,
+) -> HeadingHierarchyOptions:
+    data: dict[str, object] = {}
+    if proto.HasField("enabled"):
+        data["enabled"] = proto.enabled
+    if proto.HasField("use_bookmarks"):
+        data["use_bookmarks"] = proto.use_bookmarks
+    if proto.HasField("use_numbering"):
+        data["use_numbering"] = proto.use_numbering
+    if proto.HasField("use_style"):
+        data["use_style"] = proto.use_style
+    if proto.numbering_schemes:
+        data["numbering_schemes"] = list(proto.numbering_schemes)
+    if proto.HasField("max_level"):
+        data["max_level"] = proto.max_level
+    if proto.HasField("bookmark_match_threshold"):
+        data["bookmark_match_threshold"] = proto.bookmark_match_threshold
+    return HeadingHierarchyOptions.model_validate(data)
 
 
 def to_hierarchical_chunk_options(
@@ -554,10 +976,15 @@ def to_hierarchical_chunk_options(
 ) -> HierarchicalChunkerOptions:
     if not proto_options:
         return HierarchicalChunkerOptions()
-    return HierarchicalChunkerOptions(
-        use_markdown_tables=proto_options.use_markdown_tables,
-        include_raw_text=proto_options.include_raw_text,
-    )
+    data: dict[str, object] = {
+        "use_markdown_tables": proto_options.use_markdown_tables,
+        "include_raw_text": proto_options.include_raw_text,
+    }
+    if proto_options.HasField("use_markdown_images"):
+        data["use_markdown_images"] = proto_options.use_markdown_images
+    if proto_options.HasField("image_placeholder"):
+        data["image_placeholder"] = proto_options.image_placeholder
+    return HierarchicalChunkerOptions(**data)
 
 
 def to_hybrid_chunk_options(
@@ -565,7 +992,7 @@ def to_hybrid_chunk_options(
 ) -> HybridChunkerOptions:
     if not proto_options:
         return HybridChunkerOptions()
-    data = {
+    data: dict[str, object] = {
         "use_markdown_tables": proto_options.use_markdown_tables,
         "include_raw_text": proto_options.include_raw_text,
     }
@@ -575,6 +1002,10 @@ def to_hybrid_chunk_options(
         data["tokenizer"] = proto_options.tokenizer
     if proto_options.HasField("merge_peers"):
         data["merge_peers"] = proto_options.merge_peers
+    if proto_options.HasField("use_markdown_images"):
+        data["use_markdown_images"] = proto_options.use_markdown_images
+    if proto_options.HasField("image_placeholder"):
+        data["image_placeholder"] = proto_options.image_placeholder
     return HybridChunkerOptions(**data)
 
 
