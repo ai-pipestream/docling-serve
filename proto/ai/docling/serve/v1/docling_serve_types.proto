@@ -1,0 +1,765 @@
+syntax = "proto3";
+
+package ai.docling.serve.v1;
+
+import "ai/docling/core/v1/docling_document.proto";
+
+option java_multiple_files = true;
+option java_outer_classname = "DoclingServeTypesProto";
+option java_package = "ai.docling.serve.v1";
+
+// ============================================================================
+// Enumerations - 1:1 mapping of the REST API enum types
+// ============================================================================
+
+// Input document format types supported by Docling.
+enum InputFormat {
+  INPUT_FORMAT_UNSPECIFIED = 0;
+  INPUT_FORMAT_ASCIIDOC = 1;
+  INPUT_FORMAT_AUDIO = 2;
+  INPUT_FORMAT_CSV = 3;
+  INPUT_FORMAT_DOCX = 4;
+  INPUT_FORMAT_HTML = 5;
+  INPUT_FORMAT_IMAGE = 6;
+  INPUT_FORMAT_JSON_DOCLING = 7;
+  INPUT_FORMAT_MD = 8;
+  INPUT_FORMAT_METS_GBS = 9;
+  INPUT_FORMAT_PDF = 10;
+  INPUT_FORMAT_PPTX = 11;
+  INPUT_FORMAT_XLSX = 12;
+  INPUT_FORMAT_XML_JATS = 13;
+  INPUT_FORMAT_XML_USPTO = 14;
+  INPUT_FORMAT_LATEX = 15;
+  INPUT_FORMAT_VTT = 16;
+  INPUT_FORMAT_XML_XBRL = 17;
+  INPUT_FORMAT_DOC = 18;
+  INPUT_FORMAT_PPT = 19;
+  INPUT_FORMAT_XLS = 20;
+  INPUT_FORMAT_ODT = 21;
+  INPUT_FORMAT_ODS = 22;
+  INPUT_FORMAT_ODP = 23;
+  INPUT_FORMAT_XML_DOCLANG = 24;
+  INPUT_FORMAT_DCLX = 25;
+  INPUT_FORMAT_EMAIL = 26;
+  INPUT_FORMAT_EPUB = 27;
+  INPUT_FORMAT_VIDEO = 28;
+  INPUT_FORMAT_BOXNOTE = 29;
+}
+
+// Output format types for converted documents.
+enum OutputFormat {
+  OUTPUT_FORMAT_UNSPECIFIED = 0;
+  OUTPUT_FORMAT_DOCTAGS = 1;
+  OUTPUT_FORMAT_HTML = 2;
+  OUTPUT_FORMAT_HTML_SPLIT_PAGE = 3;
+  OUTPUT_FORMAT_JSON = 4;
+  OUTPUT_FORMAT_MARKDOWN = 5;
+  OUTPUT_FORMAT_TEXT = 6;
+  OUTPUT_FORMAT_YAML = 7;
+  OUTPUT_FORMAT_VTT = 8;
+  OUTPUT_FORMAT_DOCLANG = 9;
+  OUTPUT_FORMAT_DCLX = 10;
+  OUTPUT_FORMAT_CHUNKS = 11;
+}
+
+// OCR engine selection.
+enum OcrEngine {
+  OCR_ENGINE_UNSPECIFIED = 0;
+  OCR_ENGINE_AUTO = 1;
+  OCR_ENGINE_EASYOCR = 2;
+  OCR_ENGINE_OCRMAC = 3;
+  OCR_ENGINE_RAPIDOCR = 4;
+  OCR_ENGINE_TESSEROCR = 5;
+  OCR_ENGINE_TESSERACT = 6;
+}
+
+// PDF processing backend.
+enum PdfBackend {
+  PDF_BACKEND_UNSPECIFIED = 0;
+  PDF_BACKEND_DLPARSE_V1 = 1;
+  PDF_BACKEND_DLPARSE_V2 = 2;
+  PDF_BACKEND_DLPARSE_V4 = 3;
+  PDF_BACKEND_PYPDFIUM2 = 4;
+  PDF_BACKEND_DOCLING_PARSE = 5;
+}
+
+// Table structure extraction mode.
+enum TableFormerMode {
+  TABLE_FORMER_MODE_UNSPECIFIED = 0;
+  TABLE_FORMER_MODE_ACCURATE = 1;
+  TABLE_FORMER_MODE_FAST = 2;
+}
+
+// Document processing pipeline.
+enum ProcessingPipeline {
+  PROCESSING_PIPELINE_UNSPECIFIED = 0;
+  PROCESSING_PIPELINE_ASR = 1;
+  PROCESSING_PIPELINE_STANDARD = 2;
+  PROCESSING_PIPELINE_VLM = 3;
+  PROCESSING_PIPELINE_LEGACY = 4;
+}
+
+// Image reference mode for export.
+enum ImageRefMode {
+  IMAGE_REF_MODE_UNSPECIFIED = 0;
+  IMAGE_REF_MODE_EMBEDDED = 1;
+  IMAGE_REF_MODE_PLACEHOLDER = 2;
+  IMAGE_REF_MODE_REFERENCED = 3;
+}
+
+// Preset VLM model types. Names mirror the upstream
+// docling.datamodel.pipeline_options.VlmModelType enum.
+enum VlmModelType {
+  VLM_MODEL_TYPE_UNSPECIFIED = 0;
+  VLM_MODEL_TYPE_SMOLDOCLING = 1;
+  VLM_MODEL_TYPE_SMOLDOCLING_VLLM = 2;
+  VLM_MODEL_TYPE_GRANITE_VISION = 3;
+  VLM_MODEL_TYPE_GRANITE_VISION_VLLM = 4;
+  VLM_MODEL_TYPE_GRANITE_VISION_OLLAMA = 5;
+  VLM_MODEL_TYPE_GOT_OCR_2 = 6;
+  VLM_MODEL_TYPE_GRANITEDOCLING = 7;
+  VLM_MODEL_TYPE_GRANITEDOCLING_VLLM = 8;
+  VLM_MODEL_TYPE_DEEPSEEKOCR_OLLAMA = 9;
+  VLM_MODEL_TYPE_NANONETS_OCR2 = 10;
+  VLM_MODEL_TYPE_NANONETS_OCR2_VLLM = 11;
+  VLM_MODEL_TYPE_NANONETS_OCR2_LMSTUDIO = 12;
+  VLM_MODEL_TYPE_GLMOCR = 13;
+  VLM_MODEL_TYPE_GLMOCR_VLLM = 14;
+  VLM_MODEL_TYPE_LIGHTONOCR = 15;
+  VLM_MODEL_TYPE_LIGHTONOCR_VLLM = 16;
+}
+
+// Response format for VLM model output.
+enum ResponseFormat {
+  RESPONSE_FORMAT_UNSPECIFIED = 0;
+  RESPONSE_FORMAT_DOCTAGS = 1;
+  RESPONSE_FORMAT_MARKDOWN = 2;
+  RESPONSE_FORMAT_HTML = 3;
+  RESPONSE_FORMAT_OTSL = 4;
+  RESPONSE_FORMAT_PLAINTEXT = 5;
+}
+
+// Inference framework for local VLM models.
+enum InferenceFramework {
+  INFERENCE_FRAMEWORK_UNSPECIFIED = 0;
+  INFERENCE_FRAMEWORK_MLX = 1;
+  INFERENCE_FRAMEWORK_TRANSFORMERS = 2;
+  INFERENCE_FRAMEWORK_VLLM = 3;
+}
+
+// Type of transformers auto-model to use. Names mirror the upstream
+// docling TransformersModelType enum.
+enum TransformersModelType {
+  TRANSFORMERS_MODEL_TYPE_UNSPECIFIED = 0;
+  TRANSFORMERS_MODEL_TYPE_AUTOMODEL = 1;
+  TRANSFORMERS_MODEL_TYPE_AUTOMODEL_IMAGETEXTTOTEXT = 2;
+  TRANSFORMERS_MODEL_TYPE_AUTOMODEL_CAUSALLM = 3;
+}
+
+// Async task status.
+enum TaskStatus {
+  TASK_STATUS_UNSPECIFIED = 0;
+  TASK_STATUS_PENDING = 1;
+  TASK_STATUS_STARTED = 2;
+  TASK_STATUS_SUCCESS = 3;
+  TASK_STATUS_FAILURE = 4;
+}
+
+enum PictureClassificationLabel {
+  PICTURE_CLASSIFICATION_LABEL_UNSPECIFIED = 0;
+  PICTURE_CLASSIFICATION_LABEL_BAR_CHART = 1;
+  PICTURE_CLASSIFICATION_LABEL_BOX_PLOT = 2;
+  PICTURE_CLASSIFICATION_LABEL_FLOW_CHART = 3;
+  PICTURE_CLASSIFICATION_LABEL_LINE_CHART = 4;
+  PICTURE_CLASSIFICATION_LABEL_PIE_CHART = 5;
+  PICTURE_CLASSIFICATION_LABEL_SCATTER_PLOT = 6;
+  PICTURE_CLASSIFICATION_LABEL_TABLE = 7;
+  PICTURE_CLASSIFICATION_LABEL_OTHER_CHART = 8;
+  PICTURE_CLASSIFICATION_LABEL_FULL_PAGE_IMAGE = 9;
+  PICTURE_CLASSIFICATION_LABEL_PAGE_THUMBNAIL = 10;
+  PICTURE_CLASSIFICATION_LABEL_PHOTOGRAPH = 11;
+  PICTURE_CLASSIFICATION_LABEL_CHEMISTRY_STRUCTURE = 12;
+  PICTURE_CLASSIFICATION_LABEL_BAR_CODE = 13;
+  PICTURE_CLASSIFICATION_LABEL_ICON = 14;
+  PICTURE_CLASSIFICATION_LABEL_LOGO = 15;
+  PICTURE_CLASSIFICATION_LABEL_QR_CODE = 16;
+  PICTURE_CLASSIFICATION_LABEL_SIGNATURE = 17;
+  PICTURE_CLASSIFICATION_LABEL_STAMP = 18;
+  PICTURE_CLASSIFICATION_LABEL_ENGINEERING_DRAWING = 19;
+  PICTURE_CLASSIFICATION_LABEL_SCREENSHOT_FROM_COMPUTER = 20;
+  PICTURE_CLASSIFICATION_LABEL_SCREENSHOT_FROM_MANUAL = 21;
+  PICTURE_CLASSIFICATION_LABEL_GEOGRAPHICAL_MAP = 22;
+  PICTURE_CLASSIFICATION_LABEL_TOPOGRAPHICAL_MAP = 23;
+  PICTURE_CLASSIFICATION_LABEL_CALENDAR = 24;
+  PICTURE_CLASSIFICATION_LABEL_CROSSWORD_PUZZLE = 25;
+  PICTURE_CLASSIFICATION_LABEL_MUSIC = 26;
+  PICTURE_CLASSIFICATION_LABEL_OTHER = 27;
+  PICTURE_CLASSIFICATION_LABEL_CAD_DRAWING = 28;
+  PICTURE_CLASSIFICATION_LABEL_ELECTRICAL_DIAGRAM = 29;
+  PICTURE_CLASSIFICATION_LABEL_GEOGRAPHIC_MAP = 30;
+  PICTURE_CLASSIFICATION_LABEL_HEATMAP = 31;
+  PICTURE_CLASSIFICATION_LABEL_MARKUSH_STRUCTURE = 32;
+  PICTURE_CLASSIFICATION_LABEL_MOLECULAR_STRUCTURE = 33;
+  PICTURE_CLASSIFICATION_LABEL_NATURAL_IMAGE = 34;
+  PICTURE_CLASSIFICATION_LABEL_PICTURE_GROUP = 35;
+  PICTURE_CLASSIFICATION_LABEL_REMOTE_SENSING = 36;
+  PICTURE_CLASSIFICATION_LABEL_SCATTER_CHART = 37;
+  PICTURE_CLASSIFICATION_LABEL_SCREENSHOT = 38;
+  PICTURE_CLASSIFICATION_LABEL_STACKED_BAR_CHART = 39;
+  PICTURE_CLASSIFICATION_LABEL_STRATIGRAPHIC_CHART = 40;
+}
+
+enum VlmEngineType {
+  VLM_ENGINE_TYPE_UNSPECIFIED = 0;
+  VLM_ENGINE_TYPE_TRANSFORMERS = 1;
+  VLM_ENGINE_TYPE_MLX = 2;
+  VLM_ENGINE_TYPE_VLLM = 3;
+  VLM_ENGINE_TYPE_API = 4;
+  VLM_ENGINE_TYPE_API_OLLAMA = 5;
+  VLM_ENGINE_TYPE_API_LMSTUDIO = 6;
+  VLM_ENGINE_TYPE_API_OPENAI = 7;
+  VLM_ENGINE_TYPE_AUTO_INLINE = 8;
+}
+
+// ============================================================================
+// Scalar maps (typed open bags; no google.protobuf.Struct / JSON)
+// ============================================================================
+
+message ScalarValue {
+  oneof kind {
+    string string_value = 1;
+    int64 int_value = 2;
+    double double_value = 3;
+    bool bool_value = 4;
+  }
+}
+
+// ============================================================================
+// Source Types - where documents come from
+// ============================================================================
+
+message Source {
+  oneof source {
+    FileSource file = 1;
+    HttpSource http = 2;
+    S3Source s3 = 3;
+    AzureBlobSource azure_blob = 4;
+    GoogleCloudStorageSource google_cloud_storage = 5;
+    GoogleDriveSource google_drive = 6;
+    GenericSource generic = 7;
+  }
+}
+
+message FileSource {
+  string base64_string = 1;
+  string filename = 2;
+}
+
+message HttpSource {
+  string url = 1;
+  map<string, string> headers = 2;
+}
+
+message S3Source {
+  string endpoint = 1;
+  string access_key = 2;
+  string secret_key = 3;
+  string bucket = 4;
+  optional string key_prefix = 5;
+  bool verify_ssl = 6;
+  optional int32 max_num_elements = 7;
+}
+
+message AzureBlobSource {
+  string account_name = 1;
+  string container = 2;
+  string connection_string = 3;
+  optional string blob_prefix = 4;
+  optional int32 max_num_elements = 5;
+}
+
+message GoogleCloudStorageServiceAccountInfo {
+  string project_id = 1;
+  string private_key_id = 2;
+  string private_key = 3;
+  string client_email = 4;
+  string client_id = 5;
+  string auth_uri = 6;
+  string token_uri = 7;
+  string auth_provider_x509_cert_url = 8;
+  string client_x509_cert_url = 9;
+  optional string universe_domain = 10;
+}
+
+message GoogleCloudStorageSource {
+  string bucket = 1;
+  optional string key_prefix = 2;
+  optional int32 max_num_elements = 3;
+  optional string project = 4;
+  optional GoogleCloudStorageServiceAccountInfo service_account_key = 5;
+}
+
+message GoogleDriveCredentials {
+  string client_id = 1;
+  string project_id = 2;
+  string auth_uri = 3;
+  string token_uri = 4;
+  string auth_provider_x509_cert_url = 5;
+  string client_secret = 6;
+  repeated string redirect_uris = 7;
+}
+
+message GoogleDriveSource {
+  string path_id = 1;
+  optional string token_path = 2;
+  optional string refresh_token = 3;
+  optional string credentials_path = 4;
+  optional GoogleDriveCredentials credentials = 5;
+}
+
+message GenericSource {
+  string kind = 1;
+  map<string, ScalarValue> attributes = 2;
+}
+
+// ============================================================================
+// Target Types - where results go
+// ============================================================================
+
+message Target {
+  oneof target {
+    InBodyTarget inbody = 1;
+    PutTarget put = 2;
+    S3Target s3 = 3;
+    ZipTarget zip = 4;
+    PreSignedUrlTarget presigned_url = 5;
+    AzureBlobTarget azure_blob = 6;
+    GoogleCloudStorageTarget google_cloud_storage = 7;
+    GoogleDriveTarget google_drive = 8;
+  }
+}
+
+message InBodyTarget {}
+
+message PutTarget {
+  string url = 1;
+}
+
+message S3Target {
+  string endpoint = 1;
+  string access_key = 2;
+  string secret_key = 3;
+  string bucket = 4;
+  optional string key_prefix = 5;
+  bool verify_ssl = 6;
+  optional int32 max_num_elements = 7;
+}
+
+message ZipTarget {}
+
+message PreSignedUrlTarget {}
+
+message AzureBlobTarget {
+  string account_name = 1;
+  string container = 2;
+  string connection_string = 3;
+  optional string blob_prefix = 4;
+  optional int32 max_num_elements = 5;
+}
+
+message GoogleCloudStorageTarget {
+  string bucket = 1;
+  optional string key_prefix = 2;
+  optional int32 max_num_elements = 3;
+  optional string project = 4;
+  optional GoogleCloudStorageServiceAccountInfo service_account_key = 5;
+}
+
+message GoogleDriveTarget {
+  string path_id = 1;
+  optional string token_path = 2;
+  optional string refresh_token = 3;
+  optional string credentials_path = 4;
+  optional GoogleDriveCredentials credentials = 5;
+}
+
+// ============================================================================
+// Convert Options
+// ============================================================================
+
+message PictureDescriptionLocal {
+  string repo_id = 1;
+  optional string prompt = 2;
+  map<string, ScalarValue> generation_config = 3;
+  repeated PictureClassificationLabel classification_allow = 4;
+  repeated PictureClassificationLabel classification_deny = 5;
+  optional double classification_min_confidence = 6;
+}
+
+message PictureDescriptionApi {
+  string url = 1;
+  map<string, string> headers = 2;
+  map<string, ScalarValue> params = 3;
+  optional double timeout = 4;
+  optional int32 concurrency = 5;
+  optional string prompt = 6;
+  repeated PictureClassificationLabel classification_allow = 7;
+  repeated PictureClassificationLabel classification_deny = 8;
+  optional double classification_min_confidence = 9;
+}
+
+message VlmModelLocal {
+  optional string repo_id = 1;
+  optional string prompt = 2;
+  optional double scale = 3;
+  optional ResponseFormat response_format = 4;
+  optional InferenceFramework inference_framework = 5;
+  optional TransformersModelType transformers_model_type = 6;
+  map<string, ScalarValue> extra_generation_config = 7;
+  optional double temperature = 8;
+}
+
+message VlmModelApi {
+  optional string url = 1;
+  map<string, string> headers = 2;
+  map<string, ScalarValue> params = 3;
+  optional double timeout = 4;
+  optional int32 concurrency = 5;
+  optional string prompt = 6;
+  optional double scale = 7;
+  optional ResponseFormat response_format = 8;
+  optional double temperature = 9;
+}
+
+message BaseVlmEngineOptions {
+  VlmEngineType engine_type = 1;
+}
+
+message EngineModelConfig {
+  optional string repo_id = 1;
+  optional string revision = 2;
+  optional string torch_dtype = 3;
+  map<string, ScalarValue> extra_config = 4;
+}
+
+message ApiModelConfig {
+  map<string, ScalarValue> params = 1;
+}
+
+message EngineModelConfigEntry {
+  VlmEngineType engine_type = 1;
+  EngineModelConfig config = 2;
+}
+
+message ApiModelConfigEntry {
+  VlmEngineType engine_type = 1;
+  ApiModelConfig config = 2;
+}
+
+message VlmModelSpec {
+  string name = 1;
+  string default_repo_id = 2;
+  optional string revision = 3;
+  optional string prompt = 4;
+  optional ResponseFormat response_format = 5;
+  repeated VlmEngineType supported_engines = 6;
+  repeated EngineModelConfigEntry engine_overrides = 7;
+  repeated ApiModelConfigEntry api_overrides = 8;
+  optional bool trust_remote_code = 9;
+  repeated string stop_strings = 10;
+  optional double temperature = 11;
+  optional int32 max_new_tokens = 12;
+  map<string, ScalarValue> extra_generation_config = 13;
+}
+
+message VlmConvertOptions {
+  BaseVlmEngineOptions engine_options = 1;
+  VlmModelSpec model_spec = 2;
+  optional double scale = 3;
+  optional int32 max_size = 4;
+  optional int32 batch_size = 5;
+  optional bool force_backend_text = 6;
+}
+
+message PictureDescriptionVlmEngineOptions {
+  optional int32 batch_size = 1;
+  optional double scale = 2;
+  optional double picture_area_threshold = 3;
+  repeated PictureClassificationLabel classification_allow = 4;
+  repeated PictureClassificationLabel classification_deny = 5;
+  optional double classification_min_confidence = 6;
+  BaseVlmEngineOptions engine_options = 7;
+  VlmModelSpec model_spec = 8;
+  optional string prompt = 9;
+  map<string, ScalarValue> generation_config = 10;
+}
+
+message CodeFormulaVlmOptions {
+  BaseVlmEngineOptions engine_options = 1;
+  VlmModelSpec model_spec = 2;
+  optional double scale = 3;
+  optional int32 max_size = 4;
+  optional bool extract_code = 5;
+  optional bool extract_formulas = 6;
+}
+
+// HeadingHierarchyOptions configures PDF/image section-header level inference.
+message HeadingHierarchyOptions {
+  optional bool enabled = 1;
+  optional bool use_bookmarks = 2;
+  optional bool use_numbering = 3;
+  optional bool use_style = 4;
+  repeated string numbering_schemes = 5;
+  optional int32 max_level = 6;
+  optional double bookmark_match_threshold = 7;
+  // Docling >=2.120: refine style fallback with font weight/slant/all-caps.
+  optional bool use_font_style = 8;
+  // Docling >=2.120: relative font-size tolerance for collapsing style levels.
+  optional double style_size_tolerance = 9;
+}
+
+message ConvertDocumentOptions {
+  repeated InputFormat from_formats = 1;
+  repeated OutputFormat to_formats = 2;
+  optional ImageRefMode image_export_mode = 3;
+  optional bool do_ocr = 4;
+  optional bool force_ocr = 5;
+  optional OcrEngine ocr_engine = 6;
+  repeated string ocr_lang = 7;
+  optional PdfBackend pdf_backend = 8;
+  optional TableFormerMode table_mode = 9;
+  optional bool table_cell_matching = 10;
+  optional ProcessingPipeline pipeline = 11;
+  optional ai.docling.core.v1.IntSpan page_range = 12;
+  optional double document_timeout = 13;
+  optional bool abort_on_error = 14;
+  optional bool do_table_structure = 15;
+  optional bool include_images = 16;
+  optional double images_scale = 17;
+  optional string md_page_break_placeholder = 18;
+  optional bool do_code_enrichment = 19;
+  optional bool do_formula_enrichment = 20;
+  optional bool do_picture_classification = 21;
+  optional bool do_picture_description = 22;
+  optional double picture_description_area_threshold = 23;
+  optional PictureDescriptionLocal picture_description_local = 24;
+  optional PictureDescriptionApi picture_description_api = 25;
+  optional VlmModelType vlm_pipeline_model = 26;
+  optional VlmModelLocal vlm_pipeline_model_local = 27;
+  optional VlmModelApi vlm_pipeline_model_api = 28;
+  optional bool do_chart_extraction = 29;
+  optional string vlm_pipeline_preset = 30;
+  optional string picture_description_preset = 31;
+  optional string code_formula_preset = 32;
+  optional VlmConvertOptions vlm_pipeline_custom_config = 33;
+  optional PictureDescriptionVlmEngineOptions picture_description_custom_config = 34;
+  optional CodeFormulaVlmOptions code_formula_custom_config = 35;
+  map<string, ScalarValue> table_structure_custom_config = 36;
+  map<string, ScalarValue> layout_custom_config = 37;
+  optional string ocr_preset = 38;
+  map<string, ScalarValue> ocr_custom_config = 39;
+  optional string table_structure_preset = 40;
+  optional string layout_preset = 41;
+  optional string picture_classification_preset = 42;
+  map<string, ScalarValue> picture_classification_custom_config = 43;
+  optional bool include_page_images = 44;
+  optional bool do_pdf_heading_hierarchy = 45;
+  optional HeadingHierarchyOptions pdf_heading_hierarchy_options = 46;
+}
+
+// ============================================================================
+// Error types
+// ============================================================================
+
+// ConversionStatus mirrors docling's ConversionStatus enum.
+enum ConversionStatus {
+  CONVERSION_STATUS_UNSPECIFIED = 0;
+  CONVERSION_STATUS_PENDING = 1;
+  CONVERSION_STATUS_STARTED = 2;
+  CONVERSION_STATUS_FAILURE = 3;
+  CONVERSION_STATUS_SUCCESS = 4;
+  CONVERSION_STATUS_PARTIAL_SUCCESS = 5;
+  CONVERSION_STATUS_SKIPPED = 6;
+}
+
+// DoclingComponentType mirrors docling's DoclingComponentType enum.
+enum DoclingComponentType {
+  DOCLING_COMPONENT_TYPE_UNSPECIFIED = 0;
+  DOCLING_COMPONENT_TYPE_DOCUMENT_BACKEND = 1;
+  DOCLING_COMPONENT_TYPE_MODEL = 2;
+  DOCLING_COMPONENT_TYPE_DOC_ASSEMBLER = 3;
+  DOCLING_COMPONENT_TYPE_USER_INPUT = 4;
+  DOCLING_COMPONENT_TYPE_PIPELINE = 5;
+}
+
+// ErrorItem represents a processing error from a specific component.
+message ErrorItem {
+  DoclingComponentType component_type = 1;
+  string error_message = 2;
+  string module_name = 3;
+  // Raw component type fallback for forward-compatibility with newer
+  // docling component vocabularies (populated when component_type is
+  // DOCLING_COMPONENT_TYPE_UNSPECIFIED but the source had a value).
+  optional string component_type_raw = 4;
+}
+
+// ============================================================================
+// Document response types
+// ============================================================================
+
+// DocumentExports contains optional serialized output formats.
+message DocumentExports {
+  // Canonical Docling JSON document (same serialization as REST).
+  optional string json = 1;
+  optional string md = 2;
+  optional string html = 3;
+  optional string text = 4;
+  optional string doctags = 5;
+}
+
+// DocumentResponse contains the converted document and optional exports.
+message DocumentResponse {
+  // Filename of the source document
+  string filename = 1;
+  // Native protobuf DoclingDocument (always present)
+  ai.docling.core.v1.DoclingDocument doc = 2;
+  // Optional serialized outputs (markdown/html/text/doctags/json)
+  optional DocumentExports exports = 3;
+}
+
+// ExportDocumentResponse is the document format used within chunk responses.
+message ExportDocumentResponse {
+  string filename = 1;
+  ai.docling.core.v1.DoclingDocument doc = 2;
+  optional DocumentExports exports = 3;
+}
+
+// Document wraps an exported document with status and error info.
+message Document {
+  optional string kind = 1;
+  ExportDocumentResponse content = 2;
+  ConversionStatus status = 3;
+  repeated ErrorItem errors = 4;
+  // Raw status fallback for forward-compatibility with newer docling
+  // conversion status vocabularies.
+  optional string status_raw = 5;
+}
+
+// ============================================================================
+// Task types
+// ============================================================================
+
+// TaskStatusMetadata provides progress information for async tasks.
+message TaskStatusMetadata {
+  int64 num_docs = 1;
+  int64 num_processed = 2;
+  int64 num_succeeded = 3;
+  int64 num_failed = 4;
+}
+
+// ============================================================================
+// Request / Response Domain Models (Moved from docling_serve.proto)
+// ============================================================================
+
+// ConvertDocumentRequest mirrors POST /v1/convert/source
+message ConvertDocumentRequest {
+  repeated Source sources = 1;
+  ConvertDocumentOptions options = 2;
+  optional Target target = 3;
+}
+
+// ConvertDocumentResponse mirrors the REST convert response body.
+message ConvertDocumentResponse {
+  DocumentResponse document = 1;
+  repeated ErrorItem errors = 2;
+  double processing_time = 3;
+  ConversionStatus status = 4;
+  map<string, double> timings = 5;
+  // Raw status fallback for forward-compatibility with newer docling
+  // conversion status vocabularies.
+  optional string status_raw = 6;
+}
+
+// HierarchicalChunkerOptions configures the hierarchical chunker.
+message HierarchicalChunkerOptions {
+  bool use_markdown_tables = 1;
+  bool include_raw_text = 2;
+  optional bool use_markdown_images = 3;
+  optional string image_placeholder = 4;
+}
+
+// HybridChunkerOptions configures the hybrid chunker.
+message HybridChunkerOptions {
+  bool use_markdown_tables = 1;
+  bool include_raw_text = 2;
+  optional int32 max_tokens = 3;
+  optional string tokenizer = 4;
+  optional bool merge_peers = 5;
+  optional bool use_markdown_images = 6;
+  optional string image_placeholder = 7;
+}
+
+// HierarchicalChunkRequest mirrors POST /v1/chunk/hierarchical/source
+message HierarchicalChunkRequest {
+  repeated Source sources = 1;
+  ConvertDocumentOptions convert_options = 2;
+  optional Target target = 3;
+  bool include_converted_doc = 4;
+  HierarchicalChunkerOptions chunking_options = 5;
+}
+
+// HybridChunkRequest mirrors POST /v1/chunk/hybrid/source
+message HybridChunkRequest {
+  repeated Source sources = 1;
+  ConvertDocumentOptions convert_options = 2;
+  optional Target target = 3;
+  bool include_converted_doc = 4;
+  HybridChunkerOptions chunking_options = 5;
+}
+
+// Chunk represents a single document chunk in the response.
+message Chunk {
+  string filename = 1;
+  int32 chunk_index = 2;
+  string text = 3;
+  optional string raw_text = 4;
+  optional int32 num_tokens = 5;
+  repeated string headings = 6;
+  repeated string captions = 7;
+  repeated string doc_items = 8;
+  repeated int32 page_numbers = 9;
+  map<string, string> metadata = 10;
+}
+
+// ChunkDocumentResponse mirrors the REST chunk response body.
+message ChunkDocumentResponse {
+  repeated Chunk chunks = 1;
+  repeated Document documents = 2;
+  double processing_time = 3;
+}
+
+// TaskStatusPollRequest mirrors GET /v1/status/poll/{taskId}
+message TaskStatusPollRequest {
+  string task_id = 1;
+  // Wait time in seconds (0 = no wait / immediate poll)
+  double wait_time = 2;
+}
+
+// TaskStatusPollResponse mirrors the REST task status response.
+message TaskStatusPollResponse {
+  string task_id = 1;
+  optional string task_type = 2;
+  TaskStatus task_status = 3;
+  optional int64 task_position = 4;
+  optional TaskStatusMetadata task_meta = 5;
+}
+
+// TaskResultRequest mirrors GET /v1/result/{taskId}
+message TaskResultRequest {
+  string task_id = 1;
+}
+
+// ClearResponse mirrors the REST clear response body.
+message ClearResponse {
+  optional string status = 1;
+}
