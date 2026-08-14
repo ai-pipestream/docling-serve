@@ -968,7 +968,15 @@ def _to_heading_hierarchy_options(
         data["max_level"] = proto.max_level
     if proto.HasField("bookmark_match_threshold"):
         data["bookmark_match_threshold"] = proto.bookmark_match_threshold
-    return HeadingHierarchyOptions.model_validate(data)
+    if proto.HasField("use_font_style"):
+        data["use_font_style"] = proto.use_font_style
+    if proto.HasField("style_size_tolerance"):
+        data["style_size_tolerance"] = proto.style_size_tolerance
+    # Only pass fields the installed Pydantic model knows (2.118 vs 2.120+).
+    known = set(HeadingHierarchyOptions.model_fields)
+    return HeadingHierarchyOptions.model_validate(
+        {key: value for key, value in data.items() if key in known}
+    )
 
 
 def to_hierarchical_chunk_options(

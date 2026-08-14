@@ -665,6 +665,8 @@ def test_to_convert_options_heading_hierarchy():
             numbering_schemes=["arabic", "alpha_l"],
             max_level=4,
             bookmark_match_threshold=0.9,
+            use_font_style=False,
+            style_size_tolerance=0.1,
         ),
     )
 
@@ -678,6 +680,11 @@ def test_to_convert_options_heading_hierarchy():
     assert heading.numbering_schemes == ["arabic", "alpha_l"]
     assert heading.max_level == 4
     assert heading.bookmark_match_threshold == 0.9
+    # Docling >=2.120 fields; silently dropped on older installed models.
+    if "use_font_style" in type(heading).model_fields:
+        assert heading.use_font_style is False
+    if "style_size_tolerance" in type(heading).model_fields:
+        assert heading.style_size_tolerance == 0.1
 
 
 def test_task_status_enum():

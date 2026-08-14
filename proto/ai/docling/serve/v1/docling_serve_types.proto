@@ -512,6 +512,10 @@ message HeadingHierarchyOptions {
   repeated string numbering_schemes = 5;
   optional int32 max_level = 6;
   optional double bookmark_match_threshold = 7;
+  // Docling >=2.120: refine style fallback with font weight/slant/all-caps.
+  optional bool use_font_style = 8;
+  // Docling >=2.120: relative font-size tolerance for collapsing style levels.
+  optional double style_size_tolerance = 9;
 }
 
 message ConvertDocumentOptions {
