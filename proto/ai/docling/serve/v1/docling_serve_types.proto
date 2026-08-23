@@ -44,6 +44,8 @@ enum InputFormat {
   INPUT_FORMAT_EPUB = 27;
   INPUT_FORMAT_VIDEO = 28;
   INPUT_FORMAT_BOXNOTE = 29;
+  INPUT_FORMAT_IWORK_PAGES = 30;
+  INPUT_FORMAT_EBCDIC = 31;
 }
 
 // Output format types for converted documents.
