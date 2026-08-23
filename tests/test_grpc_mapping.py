@@ -164,6 +164,14 @@ def test_enum_mappings():
         == InputFormat.LATEX
     )
     assert (
+        _map_input_format(docling_serve_types_pb2.INPUT_FORMAT_IWORK_PAGES)
+        == InputFormat.IWORK_PAGES
+    )
+    assert (
+        _map_input_format(docling_serve_types_pb2.INPUT_FORMAT_EBCDIC)
+        == InputFormat.EBCDIC
+    )
+    assert (
         _map_output_format(docling_serve_types_pb2.OUTPUT_FORMAT_YAML)
         == OutputFormat.YAML
     )
@@ -240,6 +248,23 @@ def test_vlm_model_type_proto_covers_pydantic():
     missing = set(VlmModelType) - reachable
     assert not missing, (
         f"Pydantic VlmModelType values not reachable from any proto tag: "
+        f"{sorted(m.name for m in missing)}. "
+        f"Add a proto tag in docling_serve_types.proto and a mapping entry."
+    )
+
+
+def test_input_format_proto_covers_pydantic():
+    """Guard against future drift in InputFormat (proto vs Pydantic)."""
+    reachable: set[InputFormat] = set()
+    for value in docling_serve_types_pb2.InputFormat.DESCRIPTOR.values:
+        if value.number == 0:
+            continue
+        mapped = _map_input_format(value.number)
+        if mapped is not None:
+            reachable.add(mapped)
+    missing = set(InputFormat) - reachable
+    assert not missing, (
+        f"InputFormat values not reachable from any proto tag: "
         f"{sorted(m.name for m in missing)}. "
         f"Add a proto tag in docling_serve_types.proto and a mapping entry."
     )
@@ -595,6 +620,8 @@ def test_to_convert_options_new_enum_values():
             docling_serve_types_pb2.INPUT_FORMAT_LATEX,
             docling_serve_types_pb2.INPUT_FORMAT_VTT,
             docling_serve_types_pb2.INPUT_FORMAT_XML_XBRL,
+            docling_serve_types_pb2.INPUT_FORMAT_IWORK_PAGES,
+            docling_serve_types_pb2.INPUT_FORMAT_EBCDIC,
         ],
         to_formats=[
             docling_serve_types_pb2.OUTPUT_FORMAT_YAML,
@@ -610,6 +637,8 @@ def test_to_convert_options_new_enum_values():
         InputFormat.LATEX,
         InputFormat.VTT,
         InputFormat.XML_XBRL,
+        InputFormat.IWORK_PAGES,
+        InputFormat.EBCDIC,
     ]
     assert mapped.to_formats == [OutputFormat.YAML, OutputFormat.VTT]
     assert mapped.pdf_backend == PdfBackend.DOCLING_PARSE
