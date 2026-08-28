@@ -567,6 +567,8 @@ message ConvertDocumentOptions {
   optional bool include_page_images = 44;
   optional bool do_pdf_heading_hierarchy = 45;
   optional HeadingHierarchyOptions pdf_heading_hierarchy_options = 46;
+  // Docling >=2.122: compact markdown tables without column padding.
+  optional bool md_compact_tables = 47;
 }
 
 // ============================================================================

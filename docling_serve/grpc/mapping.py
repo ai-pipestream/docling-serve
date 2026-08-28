@@ -793,6 +793,9 @@ def to_convert_options(
     if proto_options.HasField("md_page_break_placeholder"):
         data["md_page_break_placeholder"] = proto_options.md_page_break_placeholder
 
+    if proto_options.HasField("md_compact_tables"):
+        data["md_compact_tables"] = proto_options.md_compact_tables
+
     if proto_options.HasField("do_code_enrichment"):
         data["do_code_enrichment"] = proto_options.do_code_enrichment
 
@@ -949,7 +952,10 @@ def to_convert_options(
             proto_options.pdf_heading_hierarchy_options
         )
 
-    return ConvertDocumentsRequestOptions.model_validate(data)
+    known = set(ConvertDocumentsRequestOptions.model_fields)
+    return ConvertDocumentsRequestOptions.model_validate(
+        {key: value for key, value in data.items() if key in known}
+    )
 
 
 def _to_heading_hierarchy_options(

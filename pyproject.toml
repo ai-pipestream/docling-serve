@@ -33,7 +33,7 @@ classifiers = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "docling-slim[standard,service-client,models-remote,format-opendocument]>=2.121.0,<3.0.0",
+    "docling-slim[standard,service-client,models-remote,format-opendocument]>=2.123.0,<3.0.0",
     "docling-core>=2.79.0",
     "docling-jobkit[rq,ray,vlm,azure,gcloudstorage,gdrive]>=3.4.0,<4",
     "fastapi[standard]<0.137.0",
@@ -54,7 +54,7 @@ dependencies = [
     "prometheus-client>=0.21.0",
     "grpcio>=1.80.0",
     "grpcio-reflection>=1.80.0",
-    "protobuf>=4.29.6",
+    "protobuf>=7.35.1",
 ]
 
 [project.optional-dependencies]
@@ -170,6 +170,7 @@ override-dependencies = [
   "urllib3~=2.0",
   "xgrammar>=0.1.24",
   "grpcio>=1.80.0",
+  "protobuf>=7.35.1",
   "cryptography>=46.0.7",
 ]
 

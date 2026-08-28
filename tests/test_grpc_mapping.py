@@ -481,6 +481,7 @@ def test_to_convert_options_full():
         include_images=True,
         images_scale=0.75,
         md_page_break_placeholder="---",
+        md_compact_tables=True,
         do_code_enrichment=True,
         do_formula_enrichment=True,
         do_picture_classification=True,
@@ -520,6 +521,8 @@ def test_to_convert_options_full():
     assert mapped.include_images is True
     assert mapped.images_scale == 0.75
     assert mapped.md_page_break_placeholder == "---"
+    if "md_compact_tables" in type(mapped).model_fields:
+        assert mapped.md_compact_tables is True
     assert mapped.do_code_enrichment is True
     assert mapped.do_formula_enrichment is True
     assert mapped.do_picture_classification is True
