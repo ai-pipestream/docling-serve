@@ -26,11 +26,10 @@ def test_validate_serve_types_passes_on_current_schemas():
     validate_serve_types_schema()
 
 def test_no_warnings_on_current_schemas(caplog):
-    """Current schemas should validate without missing-field warnings."""
+    """Every Pydantic field must be on the proto. Fork extensions may be proto-only."""
     with caplog.at_level(logging.WARNING):
         validate_docling_document_schema()
     assert "Fields in Pydantic but not in proto" not in caplog.text
-    assert "Fields in proto but not in Pydantic" not in caplog.text
 
 
 def test_warns_on_missing_proto_field(caplog):

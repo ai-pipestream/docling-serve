@@ -34,6 +34,7 @@ On top of the source of file (see below), both endpoints support the same parame
 | `include_page_images` | bool | If enabled, full-page images are generated and included in the output. Boolean. Optional, defaults to false. |
 | `images_scale` | float | Scale factor for images. Float. Optional, defaults to 2.0. |
 | `md_page_break_placeholder` | str | Add this placeholder between pages in the markdown output. |
+| `md_compact_tables` | bool | Whether to use compact table format without column padding in the markdown output. When False (default), tables use padded columns for better visual formatting. When True, tables use minimal whitespace, which is better for large tables and downstream processing. |
 | `chunking_options` | HybridChunkerOptions or HierarchicalChunkerOptions or NoneType | Chunker configuration. |
 | `chunking_preset` | str or NoneType | Preset ID for chunking (e.g. "granite_embedding_278m"). Mutually exclusive with chunking_options. |
 | `do_code_enrichment` | bool | If enabled, perform OCR code enrichment. Boolean. Optional, defaults to false. |
