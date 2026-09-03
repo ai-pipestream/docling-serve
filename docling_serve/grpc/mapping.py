@@ -147,6 +147,8 @@ def _map_output_format(value: int) -> Optional[OutputFormat]:
         "OUTPUT_FORMAT_DCLX": OutputFormat.DCLX,
         "OUTPUT_FORMAT_CHUNKS": OutputFormat.CHUNKS,
     }
+    if hasattr(OutputFormat, "LATEX"):
+        mapping["OUTPUT_FORMAT_LATEX"] = OutputFormat.LATEX
     return mapping.get(name)
 
 
@@ -1122,6 +1124,19 @@ def _build_exports(
     if wants(OutputFormat.DOCTAGS) and doc.doctags_content is not None:
         exports.doctags = doc.doctags_content
         has_any = True
+    if wants(OutputFormat.DOCLANG) and getattr(doc, "doclang_content", None) is not None:
+        exports.doclang = doc.doclang_content
+        has_any = True
+    latex_fmt = getattr(OutputFormat, "LATEX", None)
+    if latex_fmt is not None and wants(latex_fmt):
+        latex = getattr(doc, "latex_content", None)
+        if latex is None and doc.json_content is not None:
+            from docling_core.transforms.serializer.latex import LaTeXDocSerializer
+
+            latex = LaTeXDocSerializer(doc=doc.json_content).serialize().text
+        if latex is not None:
+            exports.latex = latex
+            has_any = True
 
     return exports if has_any else None
 
