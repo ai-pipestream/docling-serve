@@ -62,6 +62,8 @@ enum OutputFormat {
   OUTPUT_FORMAT_DOCLANG = 9;
   OUTPUT_FORMAT_DCLX = 10;
   OUTPUT_FORMAT_CHUNKS = 11;
+  // Docling >=2.124: LaTeX export via LaTeXDocSerializer.
+  OUTPUT_FORMAT_LATEX = 12;
 }
 
 // OCR engine selection.
@@ -619,6 +621,10 @@ message DocumentExports {
   optional string html = 3;
   optional string text = 4;
   optional string doctags = 5;
+  // Docling >=2.124 / jobkit 3.5: in-body DocLang markup.
+  optional string doclang = 6;
+  // Docling >=2.124: LaTeX serialization of the converted document.
+  optional string latex = 7;
 }
 
 // DocumentResponse contains the converted document and optional exports.

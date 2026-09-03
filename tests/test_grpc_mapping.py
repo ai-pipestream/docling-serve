@@ -32,6 +32,7 @@ from docling_jobkit.datamodel.chunking import HybridChunkerOptions
 from docling_serve.grpc.gen.ai.docling.core.v1 import docling_document_pb2
 from docling_serve.grpc.gen.ai.docling.serve.v1 import docling_serve_types_pb2
 from docling_serve.grpc.mapping import (
+    _build_exports,
     _map_image_ref_mode,
     _map_inference_framework,
     _map_input_format,
@@ -179,6 +180,11 @@ def test_enum_mappings():
         _map_output_format(docling_serve_types_pb2.OUTPUT_FORMAT_VTT)
         == OutputFormat.VTT
     )
+    if hasattr(OutputFormat, "LATEX"):
+        assert (
+            _map_output_format(docling_serve_types_pb2.OUTPUT_FORMAT_LATEX)
+            == OutputFormat.LATEX
+        )
     assert (
         _map_pdf_backend(docling_serve_types_pb2.PDF_BACKEND_DOCLING_PARSE)
         == PdfBackend.DOCLING_PARSE
@@ -291,6 +297,32 @@ def test_output_format_proto_covers_pydantic():
         f"OutputFormat values not reachable from any proto tag: "
         f"{sorted(m.name for m in missing)}"
     )
+
+
+def test_build_exports_doclang_and_latex():
+    from types import SimpleNamespace
+
+    from docling_core.types.doc.document import DoclingDocument
+
+    requested = {OutputFormat.DOCLANG}
+    if hasattr(OutputFormat, "LATEX"):
+        requested.add(OutputFormat.LATEX)
+    exports = _build_exports(
+        SimpleNamespace(
+            json_content=DoclingDocument(name="n"),
+            md_content=None,
+            html_content=None,
+            text_content=None,
+            doctags_content=None,
+            doclang_content="<doc/>",
+            latex_content=None,
+        ),
+        requested,
+    )
+    assert exports is not None
+    assert exports.doclang == "<doc/>"
+    if hasattr(OutputFormat, "LATEX"):
+        assert exports.HasField("latex")
 
 
 def test_to_task_sources_and_target():
