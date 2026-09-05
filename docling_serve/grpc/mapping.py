@@ -777,6 +777,16 @@ def to_convert_options(
         val = _map_pipeline(proto_options.pipeline)
         if val is not None:
             data["pipeline"] = val
+        else:
+            # A tag this proto knows but the installed engine lacks (e.g. NATIVE on
+            # docling-slim < 2.126) must not fall through to the default pipeline.
+            name = _enum_name(
+                docling_serve_types_pb2.ProcessingPipeline, proto_options.pipeline
+            )
+            if name is not None:
+                raise ValueError(
+                    f"Pipeline {name} is not supported by the installed docling engine."
+                )
 
     if proto_options.HasField("page_range"):
         span = proto_options.page_range

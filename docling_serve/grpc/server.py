@@ -112,6 +112,18 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
             return None
         return sources
 
+    async def _parse_options(self, proto_options, context: grpc.aio.ServicerContext):
+        """Map proto convert options, aborting with INVALID_ARGUMENT on bad input.
+
+        Covers both explicit mapping rejections (a pipeline tag the installed
+        engine lacks) and Pydantic validation errors from the options model.
+        """
+        try:
+            return to_convert_options(proto_options)
+        except ValueError as exc:
+            await self._abort(context, grpc.StatusCode.INVALID_ARGUMENT, str(exc))
+            return None
+
     def _parse_target(self, request_body):
         if request_body.HasField("target"):
             return to_task_target(request_body.target)
@@ -214,9 +226,12 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
         sources = await self._parse_sources(request.request.sources, context)
         if sources is None:
             return docling_serve_pb2.ConvertSourceResponse()
-        options = to_convert_options(
-            request.request.options if request.request.HasField("options") else None
+        options = await self._parse_options(
+            request.request.options if request.request.HasField("options") else None,
+            context,
         )
+        if options is None:
+            return docling_serve_pb2.ConvertSourceResponse()
         self._ensure_doc_format(options, requested_formats)
         target = self._parse_target(request.request)
         options = await self._enforce_policy(context, sources, options, target)
@@ -277,9 +292,12 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
         sources = await self._parse_sources(request.request.sources, context)
         if sources is None:
             return docling_serve_pb2.ConvertSourceAsyncResponse()
-        options = to_convert_options(
-            request.request.options if request.request.HasField("options") else None
+        options = await self._parse_options(
+            request.request.options if request.request.HasField("options") else None,
+            context,
         )
+        if options is None:
+            return docling_serve_pb2.ConvertSourceAsyncResponse()
         self._ensure_doc_format(options, requested_formats)
         target = self._parse_target(request.request)
         options = await self._enforce_policy(context, sources, options, target)
@@ -313,11 +331,14 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
         sources = await self._parse_sources(request.request.sources, context)
         if sources is None:
             return docling_serve_pb2.ChunkHierarchicalSourceResponse()
-        options = to_convert_options(
+        options = await self._parse_options(
             request.request.convert_options
             if request.request.HasField("convert_options")
-            else None
+            else None,
+            context,
         )
+        if options is None:
+            return docling_serve_pb2.ChunkHierarchicalSourceResponse()
         self._ensure_doc_format(options, requested_formats)
         target = self._parse_target(request.request)
         chunking_options = to_hierarchical_chunk_options(
@@ -393,11 +414,14 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
         sources = await self._parse_sources(request.request.sources, context)
         if sources is None:
             return docling_serve_pb2.ChunkHybridSourceResponse()
-        options = to_convert_options(
+        options = await self._parse_options(
             request.request.convert_options
             if request.request.HasField("convert_options")
-            else None
+            else None,
+            context,
         )
+        if options is None:
+            return docling_serve_pb2.ChunkHybridSourceResponse()
         self._ensure_doc_format(options, requested_formats)
         target = self._parse_target(request.request)
         chunking_options = to_hybrid_chunk_options(
@@ -473,11 +497,14 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
         sources = await self._parse_sources(request.request.sources, context)
         if sources is None:
             return docling_serve_pb2.ChunkHierarchicalSourceAsyncResponse()
-        options = to_convert_options(
+        options = await self._parse_options(
             request.request.convert_options
             if request.request.HasField("convert_options")
-            else None
+            else None,
+            context,
         )
+        if options is None:
+            return docling_serve_pb2.ChunkHierarchicalSourceAsyncResponse()
         self._ensure_doc_format(options, requested_formats)
         target = self._parse_target(request.request)
         chunking_options = to_hierarchical_chunk_options(
@@ -524,11 +551,14 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
         sources = await self._parse_sources(request.request.sources, context)
         if sources is None:
             return docling_serve_pb2.ChunkHybridSourceAsyncResponse()
-        options = to_convert_options(
+        options = await self._parse_options(
             request.request.convert_options
             if request.request.HasField("convert_options")
-            else None
+            else None,
+            context,
         )
+        if options is None:
+            return docling_serve_pb2.ChunkHybridSourceAsyncResponse()
         self._ensure_doc_format(options, requested_formats)
         target = self._parse_target(request.request)
         chunking_options = to_hybrid_chunk_options(
@@ -694,9 +724,12 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
         sources = await self._parse_sources(request.request.sources, context)
         if sources is None:
             return
-        options = to_convert_options(
-            request.request.options if request.request.HasField("options") else None
+        options = await self._parse_options(
+            request.request.options if request.request.HasField("options") else None,
+            context,
         )
+        if options is None:
+            return
         target = self._parse_target(request.request)
         options = await self._enforce_policy(context, sources, options, target)
         if options is None:
@@ -723,11 +756,14 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
         sources = await self._parse_sources(request.request.sources, context)
         if sources is None:
             return
-        options = to_convert_options(
+        options = await self._parse_options(
             request.request.convert_options
             if request.request.HasField("convert_options")
-            else None
+            else None,
+            context,
         )
+        if options is None:
+            return
         target = self._parse_target(request.request)
         chunking_options = to_hierarchical_chunk_options(
             request.request.chunking_options
@@ -768,11 +804,14 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
         sources = await self._parse_sources(request.request.sources, context)
         if sources is None:
             return
-        options = to_convert_options(
+        options = await self._parse_options(
             request.request.convert_options
             if request.request.HasField("convert_options")
-            else None
+            else None,
+            context,
         )
+        if options is None:
+            return
         target = self._parse_target(request.request)
         chunking_options = to_hybrid_chunk_options(
             request.request.chunking_options

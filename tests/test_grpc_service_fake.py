@@ -722,6 +722,36 @@ async def test_convert_source_mixed_with_empty_variant_invalid_argument(grpc_stu
 
 
 @pytest.mark.asyncio
+async def test_convert_source_invalid_options_invalid_argument(grpc_stub):
+    """Options the mapping layer rejects surface as INVALID_ARGUMENT, not INTERNAL.
+
+    page_range with end < start fails Pydantic validation inside
+    to_convert_options; the servicer must translate that to a client error.
+    """
+    from docling_core.proto.gen.ai.docling.core.v1 import docling_document_pb2
+
+    with pytest.raises(grpc.aio.AioRpcError) as exc_info:
+        await grpc_stub.ConvertSource(
+            docling_serve_pb2.ConvertSourceRequest(
+                request=docling_serve_types_pb2.ConvertDocumentRequest(
+                    sources=[
+                        docling_serve_types_pb2.Source(
+                            http=docling_serve_types_pb2.HttpSource(
+                                url="https://example.com/doc.pdf"
+                            )
+                        )
+                    ],
+                    options=docling_serve_types_pb2.ConvertDocumentOptions(
+                        page_range=docling_document_pb2.IntSpan(start=5, end=1)
+                    ),
+                )
+            )
+        )
+    assert exc_info.value.code() == grpc.StatusCode.INVALID_ARGUMENT
+    assert "page_range" in exc_info.value.details()
+
+
+@pytest.mark.asyncio
 async def test_convert_source_http_source(grpc_stub):
     """ConvertSource with HttpSource succeeds end-to-end through fake orchestrator."""
     request = docling_serve_pb2.ConvertSourceRequest(
