@@ -190,9 +190,18 @@ def test_enum_mappings():
         == PdfBackend.DOCLING_PARSE
     )
     assert (
+        _map_pdf_backend(docling_serve_types_pb2.PDF_BACKEND_THREADED_DOCLING_PARSE)
+        == PdfBackend.THREADED_DOCLING_PARSE
+    )
+    assert (
         _map_pipeline(docling_serve_types_pb2.PROCESSING_PIPELINE_LEGACY)
         == ProcessingPipeline.LEGACY
     )
+    if hasattr(ProcessingPipeline, "NATIVE"):
+        assert (
+            _map_pipeline(docling_serve_types_pb2.PROCESSING_PIPELINE_NATIVE)
+            == ProcessingPipeline.NATIVE
+        )
     assert (
         _map_vlm_model_type(docling_serve_types_pb2.VLM_MODEL_TYPE_GRANITEDOCLING)
         == VlmModelType.GRANITEDOCLING
@@ -254,6 +263,42 @@ def test_vlm_model_type_proto_covers_pydantic():
     missing = set(VlmModelType) - reachable
     assert not missing, (
         f"Pydantic VlmModelType values not reachable from any proto tag: "
+        f"{sorted(m.name for m in missing)}. "
+        f"Add a proto tag in docling_serve_types.proto and a mapping entry."
+    )
+
+
+def test_pdf_backend_proto_covers_pydantic():
+    """Guard against future drift: every Pydantic PdfBackend value must be reachable
+    via _map_pdf_backend from at least one proto enum tag."""
+    reachable: set[PdfBackend] = set()
+    for value in docling_serve_types_pb2.PdfBackend.DESCRIPTOR.values:
+        if value.number == 0:
+            continue
+        mapped = _map_pdf_backend(value.number)
+        if mapped is not None:
+            reachable.add(mapped)
+    missing = set(PdfBackend) - reachable
+    assert not missing, (
+        f"Pydantic PdfBackend values not reachable from any proto tag: "
+        f"{sorted(m.name for m in missing)}. "
+        f"Add a proto tag in docling_serve_types.proto and a mapping entry."
+    )
+
+
+def test_processing_pipeline_proto_covers_pydantic():
+    """Guard against future drift: every Pydantic ProcessingPipeline value must be
+    reachable via _map_pipeline from at least one proto enum tag."""
+    reachable: set[ProcessingPipeline] = set()
+    for value in docling_serve_types_pb2.ProcessingPipeline.DESCRIPTOR.values:
+        if value.number == 0:
+            continue
+        mapped = _map_pipeline(value.number)
+        if mapped is not None:
+            reachable.add(mapped)
+    missing = set(ProcessingPipeline) - reachable
+    assert not missing, (
+        f"Pydantic ProcessingPipeline values not reachable from any proto tag: "
         f"{sorted(m.name for m in missing)}. "
         f"Add a proto tag in docling_serve_types.proto and a mapping entry."
     )

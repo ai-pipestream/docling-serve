@@ -189,6 +189,7 @@ def _map_pdf_backend(value: int) -> Optional[PdfBackend]:
         "PDF_BACKEND_DLPARSE_V1": PdfBackend.DLPARSE_V1,
         "PDF_BACKEND_DLPARSE_V2": PdfBackend.DLPARSE_V2,
         "PDF_BACKEND_DLPARSE_V4": PdfBackend.DLPARSE_V4,
+        "PDF_BACKEND_THREADED_DOCLING_PARSE": PdfBackend.THREADED_DOCLING_PARSE,
     }
     return mapping.get(name)
 
@@ -214,6 +215,10 @@ def _map_pipeline(value: int) -> Optional[ProcessingPipeline]:
         "PROCESSING_PIPELINE_STANDARD": ProcessingPipeline.STANDARD,
         "PROCESSING_PIPELINE_VLM": ProcessingPipeline.VLM,
     }
+    # docling-slim 2.126+; keep the proto tag even when the pin cannot resolve yet.
+    native = getattr(ProcessingPipeline, "NATIVE", None)
+    if native is not None:
+        mapping["PROCESSING_PIPELINE_NATIVE"] = native
     return mapping.get(name)
 
 
