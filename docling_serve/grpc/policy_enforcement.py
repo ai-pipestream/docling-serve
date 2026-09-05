@@ -18,8 +18,8 @@ from docling.datamodel.service.options import ConvertDocumentsOptions
 from docling.datamodel.service.targets import PresignedUrlTarget
 
 from docling_serve.policy import (
-    ServicePolicy,
     _INLINE_SOURCE_KINDS,
+    ServicePolicy,
     normalize_convert_options,
     validate_convert_options,
     validate_source_kinds,
@@ -42,6 +42,7 @@ def validate_request(
     policy: ServicePolicy,
     *,
     chunk: bool = False,
+    callbacks: Optional[list] = None,
 ) -> Optional[str]:
     """Validate a gRPC request against the service policy.
 
@@ -53,6 +54,9 @@ def validate_request(
         validate_target_kind(target.kind, policy)
     except HTTPException as exc:
         return str(exc.detail)
+
+    if callbacks and not policy.callbacks_enabled:
+        return "Callbacks are disabled by server policy."
 
     if len(sources) > policy.max_sources_per_request:
         return (

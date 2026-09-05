@@ -25,6 +25,93 @@ def test_validate_serve_types_passes_on_current_schemas():
     """Serve request/option protos must stay aligned with Pydantic models."""
     validate_serve_types_schema()
 
+
+def test_serve_types_no_pydantic_fields_missing_on_proto(caplog):
+    """Every serve Pydantic field (requests, responses, callbacks) is on the wire.
+
+    Proto-only fields are limited to the documented *_raw fallbacks and the
+    Generic{Source,Target}.attributes bags (Pydantic uses extra="allow").
+    """
+    with caplog.at_level(logging.WARNING):
+        validate_serve_types_schema()
+    assert "Serve fields in Pydantic but not in proto" not in caplog.text
+    proto_only = [
+        line
+        for line in caplog.text.splitlines()
+        if "Serve fields in proto but not in Pydantic" in line
+    ]
+    if proto_only:
+        _, _, listed = proto_only[0].partition("): ")
+        extras = {p.strip() for p in listed.split(",")}
+        assert extras <= {"GenericSource.attributes", "GenericTarget.attributes"}, (
+            extras
+        )
+
+
+def test_serve_types_covers_response_side_messages():
+    """The response/callback messages are part of the validated pair list."""
+    import inspect
+
+    from docling_serve.grpc import schema_validator
+
+    source = inspect.getsource(schema_validator.validate_serve_types_schema)
+    for proto_name in (
+        "ErrorItem",
+        "ConfidenceScores",
+        "PublicFailureInfo",
+        "ArtifactRef",
+        "DocumentArtifactItem",
+        "ConvertDocumentResponse",
+        "ChunkDocumentResponse",
+        "ZipArchiveResult",
+        "RemoteTargetResult",
+        "PresignedArtifactResult",
+        "TaskFailureResult",
+        "TaskStatusPollResponse",
+        "BatchConvertDocumentRequest",
+        "CallbackSpec",
+        "GenericTarget",
+        "ProgressSetNumDocs",
+        "ProgressUpdateProcessed",
+        "ProgressDocumentCompleted",
+        "ProgressTaskCompleted",
+    ):
+        assert f'"{proto_name}"' in source, proto_name
+
+
+def test_context_scoped_coercion_matches_qualified_path():
+    """Allowlist keys may be scoped to one message via '<Proto>.<field>'."""
+    assert _is_coercion_allowed(
+        "task_status",
+        "enum:ConversionStatus",
+        "enum:TaskStatus",
+        context="TaskStatusPollResponse.",
+    )
+    assert not _is_coercion_allowed(
+        "task_status",
+        "enum:ConversionStatus",
+        "enum:TaskStatus",
+        context="SomethingElse.",
+    )
+
+
+def test_message_name_equivalences_and_union_wrapper_compat():
+    assert _types_compatible("message:DocumentResultItem", "message:Document")
+    assert _types_compatible(
+        "optional<message:TaskProcessingMeta>", "message:TaskStatusMetadata"
+    )
+    assert _types_compatible(
+        "list<message:ChunkedDocumentResultItem>", "list<message:Chunk>"
+    )
+    # Discriminated source/target unions collapse onto the oneof wrapper.
+    assert _types_compatible(
+        "union<message:InBodyTarget,message:ZipTarget>", "message:Target"
+    )
+    assert not _types_compatible(
+        "union<message:InBodyTarget,message:ZipTarget>", "message:FileSource"
+    )
+
+
 def test_no_warnings_on_current_schemas(caplog):
     """Every Pydantic field must be on the proto. Fork extensions may be proto-only."""
     with caplog.at_level(logging.WARNING):

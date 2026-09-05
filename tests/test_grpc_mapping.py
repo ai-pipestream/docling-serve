@@ -1247,3 +1247,358 @@ def test_page_range_intspan_maps_to_tuple():
     )
     assert mapped.page_range == (2, 9)
     assert isinstance(mapped.page_range, tuple)
+
+
+# ---------------------------------------------------------------------------
+# Result union / typed response messages (ConfidenceScores, PublicFailureInfo,
+# ArtifactRef, ErrorItem.category/page_no) and request-side additions
+# (chunking_preset / chunking_options, callbacks).
+# ---------------------------------------------------------------------------
+
+
+def test_to_convert_options_chunking_preset_and_oneof():
+    from docling_jobkit.datamodel.chunking import HierarchicalChunkerOptions
+
+    preset = to_convert_options(
+        docling_serve_types_pb2.ConvertDocumentOptions(
+            to_formats=[docling_serve_types_pb2.OUTPUT_FORMAT_CHUNKS],
+            chunking_preset="granite_embedding_278m",
+        )
+    )
+    assert preset.chunking_preset == "granite_embedding_278m"
+    assert preset.chunking_options is None
+
+    hybrid = to_convert_options(
+        docling_serve_types_pb2.ConvertDocumentOptions(
+            to_formats=[docling_serve_types_pb2.OUTPUT_FORMAT_CHUNKS],
+            hybrid_chunking=docling_serve_types_pb2.HybridChunkerOptions(
+                max_tokens=128, include_raw_text=True
+            ),
+        )
+    )
+    assert isinstance(hybrid.chunking_options, HybridChunkerOptions)
+    assert hybrid.chunking_options.max_tokens == 128
+    assert hybrid.chunking_preset is None
+
+    hierarchical = to_convert_options(
+        docling_serve_types_pb2.ConvertDocumentOptions(
+            hierarchical_chunking=docling_serve_types_pb2.HierarchicalChunkerOptions(
+                use_markdown_tables=True
+            ),
+        )
+    )
+    assert isinstance(hierarchical.chunking_options, HierarchicalChunkerOptions)
+    assert hierarchical.chunking_options.use_markdown_tables is True
+
+
+def test_to_convert_options_preset_and_options_are_mutually_exclusive():
+    with pytest.raises(ValueError, match="chunking_preset and chunking_options"):
+        to_convert_options(
+            docling_serve_types_pb2.ConvertDocumentOptions(
+                chunking_preset="granite_embedding_278m",
+                hybrid_chunking=docling_serve_types_pb2.HybridChunkerOptions(),
+            )
+        )
+
+
+def test_to_callbacks_typed():
+    from docling.datamodel.service.callbacks import CallbackSpec
+
+    from docling_serve.grpc.mapping import to_callbacks
+
+    [spec] = to_callbacks(
+        [
+            docling_serve_types_pb2.CallbackSpec(
+                url="https://hooks.example.com/p",
+                headers={"X-Token": "abc"},
+                ca_cert="PEM",
+            )
+        ]
+    )
+    assert isinstance(spec, CallbackSpec)
+    assert str(spec.url) == "https://hooks.example.com/p"
+    assert spec.headers == {"X-Token": "abc"}
+    assert spec.ca_cert == "PEM"
+    assert to_callbacks([]) == []
+
+
+def test_error_item_category_and_page_no():
+    from docling.datamodel.base_models import ErrorItem
+    from docling.datamodel.document import DoclingComponentType
+    from docling.datamodel.service.responses import FailureCategory
+
+    from docling_serve.grpc.mapping import _error_item_to_proto
+
+    proto = _error_item_to_proto(
+        ErrorItem(
+            component_type=DoclingComponentType.DOCUMENT_BACKEND,
+            module_name="pdf",
+            error_message="corrupt xref",
+            category=FailureCategory.BACKEND_FAILURE,
+            page_no=7,
+        )
+    )
+    assert proto.category == docling_serve_types_pb2.FAILURE_CATEGORY_BACKEND_FAILURE
+    assert not proto.HasField("category_raw")
+    assert proto.page_no == 7
+
+    doc_scoped = _error_item_to_proto(
+        ErrorItem(
+            component_type=DoclingComponentType.DOCUMENT_BACKEND,
+            module_name="pdf",
+            error_message="unreadable",
+        )
+    )
+    assert doc_scoped.category == docling_serve_types_pb2.FAILURE_CATEGORY_UNKNOWN
+    assert not doc_scoped.HasField("page_no")
+
+
+def test_confidence_scores_optional_fields_and_grades():
+    from docling.datamodel.service.responses import ConfidenceScores, QualityGrade
+
+    from docling_serve.grpc.mapping import confidence_to_proto
+
+    proto = confidence_to_proto(
+        ConfidenceScores(
+            layout_score=0.5,
+            mean_grade=QualityGrade.EXCELLENT,
+            low_grade=QualityGrade.UNSPECIFIED,
+        )
+    )
+    assert proto.layout_score == pytest.approx(0.5)
+    for absent in ("parse_score", "table_score", "ocr_score", "mean_score"):
+        assert not proto.HasField(absent), absent
+    assert proto.mean_grade == docling_serve_types_pb2.QUALITY_GRADE_EXCELLENT
+    assert proto.low_grade == docling_serve_types_pb2.QUALITY_GRADE_UNSPECIFIED
+    assert not proto.HasField("mean_grade_raw")
+    assert not proto.HasField("low_grade_raw")
+
+
+def test_public_failure_unknown_vocab_falls_back_to_raw():
+    from docling.datamodel.service.responses import PublicFailureInfo
+
+    from docling_serve.grpc.mapping import public_failure_to_proto
+
+    failure = PublicFailureInfo.model_construct(
+        category="brand_new_category",
+        message="m",
+        retryable=False,
+        phase="brand_new_phase",
+        details={},
+    )
+    proto = public_failure_to_proto(failure)
+    assert proto.category == docling_serve_types_pb2.FAILURE_CATEGORY_UNSPECIFIED
+    assert proto.category_raw == "brand_new_category"
+    assert proto.phase == docling_serve_types_pb2.FAILURE_PHASE_UNSPECIFIED
+    assert proto.phase_raw == "brand_new_phase"
+
+
+def test_artifact_ref_unknown_type_falls_back_to_raw():
+    from docling.datamodel.service.responses import ArtifactRef
+
+    from docling_serve.grpc.mapping import artifact_ref_to_proto
+
+    ref = ArtifactRef.model_construct(
+        artifact_type="hologram",
+        mime_type="application/x-hologram",
+        uri="https://example.com/h",
+        url_expires_at=None,
+    )
+    proto = artifact_ref_to_proto(ref)
+    assert proto.artifact_type == docling_serve_types_pb2.ARTIFACT_TYPE_UNSPECIFIED
+    assert proto.artifact_type_raw == "hologram"
+    assert not proto.HasField("url_expires_at")
+
+
+def test_task_type_unknown_falls_back_to_raw():
+    from docling_jobkit.datamodel.task import Task
+    from docling_jobkit.datamodel.task_meta import TaskStatus
+
+    from docling_serve.grpc.mapping import task_status_to_proto
+
+    task = Task.model_construct(
+        task_id="t",
+        task_type="embed",
+        task_status=TaskStatus.PENDING,
+        sources=[],
+        processing_meta=None,
+        error_message=None,
+        failure=None,
+    )
+    proto = task_status_to_proto(task, position=3)
+    assert proto.task_type == docling_serve_types_pb2.TASK_TYPE_UNSPECIFIED
+    assert proto.task_type_raw == "embed"
+    assert proto.task_position == 3
+
+
+def test_set_convert_result_rejects_chunk_payload():
+    from docling_jobkit.datamodel.result import ChunkedDocumentResult, DoclingTaskResult
+
+    from docling_serve.grpc.gen.ai.docling.serve.v1 import docling_serve_pb2
+    from docling_serve.grpc.mapping import UnexpectedResultType, set_convert_result
+
+    task_result = DoclingTaskResult(
+        result=ChunkedDocumentResult(chunks=[], documents=[]),
+        processing_time=0.1,
+        num_converted=0,
+        num_succeeded=0,
+        num_failed=0,
+    )
+    with pytest.raises(UnexpectedResultType):
+        set_convert_result(docling_serve_pb2.GetConvertResultResponse(), task_result)
+
+
+def test_progress_update_processed_mirrors_meta_counters():
+    from docling_jobkit.datamodel.task_meta import TaskProcessingMeta
+
+    from docling_serve.grpc.mapping import progress_update_processed
+
+    progress = progress_update_processed(
+        TaskProcessingMeta(
+            num_docs=5,
+            num_processed=3,
+            num_succeeded=1,
+            num_partially_succeeded=1,
+            num_failed=1,
+        )
+    )
+    assert progress.WhichOneof("progress") == "update_processed"
+    update = progress.update_processed
+    assert (update.num_processed, update.num_succeeded) == (3, 1)
+    assert (update.num_partially_succeeded, update.num_failed) == (1, 1)
+    assert list(update.docs) == []
+
+
+# --- Drift guards: every Pydantic vocabulary value has a proto tag -----------
+
+
+def _assert_enum_covered(members, mapping, unspecified, label):
+    from docling_serve.grpc.mapping import _enum_and_raw
+
+    unmapped = [
+        m for m in members if _enum_and_raw(m, mapping) == (unspecified, str(m))
+    ]
+    assert not unmapped, f"{label} values without proto tags: {unmapped}"
+
+
+def test_failure_vocab_proto_covers_pydantic():
+    from docling.datamodel.service.responses import FailureCategory, FailurePhase
+
+    from docling_serve.grpc.mapping import (
+        _FAILURE_CATEGORY_TO_PROTO,
+        _FAILURE_PHASE_TO_PROTO,
+    )
+
+    _assert_enum_covered(
+        [m.value for m in FailureCategory],
+        _FAILURE_CATEGORY_TO_PROTO,
+        docling_serve_types_pb2.FAILURE_CATEGORY_UNSPECIFIED,
+        "FailureCategory",
+    )
+    _assert_enum_covered(
+        [m.value for m in FailurePhase],
+        _FAILURE_PHASE_TO_PROTO,
+        docling_serve_types_pb2.FAILURE_PHASE_UNSPECIFIED,
+        "FailurePhase",
+    )
+
+
+def test_quality_grade_and_task_type_proto_cover_pydantic():
+    from docling.datamodel.service.responses import QualityGrade
+    from docling_jobkit.datamodel.task_meta import TaskType
+
+    from docling_serve.grpc.mapping import _QUALITY_GRADE_TO_PROTO, _TASK_TYPE_TO_PROTO
+
+    missing_grades = [
+        m.value for m in QualityGrade if m.value not in _QUALITY_GRADE_TO_PROTO
+    ]
+    assert not missing_grades, missing_grades
+    missing_types = [m.value for m in TaskType if m.value not in _TASK_TYPE_TO_PROTO]
+    assert not missing_types, missing_types
+
+
+def test_artifact_type_proto_covers_pydantic_literal():
+    from typing import get_args
+
+    from docling.datamodel.service.responses import ArtifactRef
+
+    from docling_serve.grpc.mapping import _ARTIFACT_TYPE_TO_PROTO
+
+    literal_values = set(get_args(ArtifactRef.model_fields["artifact_type"].annotation))
+    assert literal_values == set(_ARTIFACT_TYPE_TO_PROTO), literal_values ^ set(
+        _ARTIFACT_TYPE_TO_PROTO
+    )
+
+
+def test_result_union_arms_cover_docling_task_result():
+    """Every DoclingTaskResult.result member has an arm on the convert/chunk oneofs."""
+    from typing import get_args
+
+    from docling_jobkit.datamodel.result import DoclingTaskResult
+
+    from docling_serve.grpc.gen.ai.docling.serve.v1 import docling_serve_pb2
+
+    members = {
+        m.__name__
+        for m in get_args(DoclingTaskResult.model_fields["result"].annotation)
+    }
+    convert_arms = {
+        f.message_type.name
+        for f in docling_serve_pb2.GetConvertResultResponse.DESCRIPTOR.oneofs_by_name[
+            "result"
+        ].fields
+    }
+    chunk_arms = {
+        f.message_type.name
+        for f in docling_serve_pb2.GetChunkResultResponse.DESCRIPTOR.oneofs_by_name[
+            "result"
+        ].fields
+    }
+    # DocumentResultItem is carried inside ConvertDocumentResponse; the chunk
+    # union is ChunkDocumentResponse. Task-scope failure is an arm on both.
+    expected_convert = {
+        "ConvertDocumentResponse",
+        "ZipArchiveResult",
+        "RemoteTargetResult",
+        "PresignedArtifactResult",
+        "TaskFailureResult",
+    }
+    assert convert_arms == expected_convert
+    assert chunk_arms == {"ChunkDocumentResponse", "TaskFailureResult"}
+    assert members == {
+        "DocumentResultItem",
+        "ZipArchiveResult",
+        "RemoteTargetResult",
+        "ChunkedDocumentResult",
+        "PresignedArtifactResult",
+    }, members
+    # Same arms on the sync response so unary/async are symmetric.
+    sync_arms = {
+        f.message_type.name
+        for f in docling_serve_pb2.ConvertSourceResponse.DESCRIPTOR.oneofs_by_name[
+            "result"
+        ].fields
+    }
+    assert sync_arms == convert_arms
+
+
+def test_progress_kinds_cover_callback_union():
+    from typing import get_args
+
+    from docling.datamodel.service.callbacks import ProgressCallbackRequest
+
+    union = ProgressCallbackRequest.model_fields["progress"].annotation
+    kinds = set()
+    for member in get_args(union):
+        inner = get_args(member)[0] if get_args(member) else member
+        for m in get_args(inner) or (inner,):
+            if hasattr(m, "model_fields") and "kind" in m.model_fields:
+                kinds.add(get_args(m.model_fields["kind"].annotation)[0])
+    arms = {
+        f.name
+        for f in docling_serve_types_pb2.TaskProgress.DESCRIPTOR.oneofs_by_name[
+            "progress"
+        ].fields
+    }
+    assert kinds, "could not introspect ProgressCallbackRequest.progress"
+    assert kinds == arms, kinds ^ arms

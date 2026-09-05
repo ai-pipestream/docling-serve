@@ -32,7 +32,10 @@ ALLOWED_COERCIONS: dict[str, tuple[str, str]] = {
         "map<string,message:ScalarValue>",
     ),
     "**.extra_config": ("map<string,Any>", "map<string,message:ScalarValue>"),
-    "ocr_custom_config": ("optional<map<string,Any>>", "map<string,message:ScalarValue>"),
+    "ocr_custom_config": (
+        "optional<map<string,Any>>",
+        "map<string,message:ScalarValue>",
+    ),
     "table_structure_custom_config": (
         "optional<map<string,Any>>",
         "map<string,message:ScalarValue>",
@@ -58,6 +61,50 @@ ALLOWED_COERCIONS: dict[str, tuple[str, str]] = {
         "union<message:CodeFormulaVlmOptions,dict>",
         "message:CodeFormulaVlmOptions",
     ),
+    # --- Response side ---------------------------------------------------
+    # REST inlines the full ProfilingItem per timing key; gRPC carries the
+    # aggregate ProfilingItem.total() seconds (see mapping._timings_to_proto).
+    "**.timings": ("map<string,message:ProfilingItem>", "map<string,float>"),
+    # ArtifactRef.artifact_type is a Literal[...] on the Pydantic side; the
+    # proto uses a closed ArtifactType enum plus artifact_type_raw fallback.
+    "**.artifact_type": ("string", "enum:ArtifactType"),
+    # Datetimes cross the wire as ISO-8601 strings.
+    "**.url_expires_at": ("optional<datetime>", "optional<string>"),
+    # Chunk.metadata is an open `dict | None` in Pydantic (chunker-defined);
+    # gRPC flattens it into a typed map<string, ScalarValue>.
+    "**.metadata": ("optional<dict>", "map<string,message:ScalarValue>"),
+    # TaskStatusResponse.task_status is typed as ConversionStatus upstream
+    # (same string vocabulary as TaskStatus: pending/started/success/failure).
+    "TaskStatusPollResponse.task_status": (
+        "enum:ConversionStatus",
+        "enum:TaskStatus",
+    ),
+    # ProgressTaskCompleted.task_status is Literal["success", "failure"].
+    "ProgressTaskCompleted.task_status": ("string", "enum:TaskStatus"),
+}
+
+# Pydantic models whose proto counterpart carries a different message name.
+# Key = Pydantic class name, Value = proto message name.  Used when a model
+# is referenced as a field type so nested references compare by wire shape
+# rather than by class name.
+_MESSAGE_NAME_EQUIVALENCES: dict[str, str] = {
+    "ConvertDocumentsOptions": "ConvertDocumentOptions",
+    "ExportDocumentResponse": "DocumentResponse",
+    "DocumentResultItem": "Document",
+    "ChunkedDocumentResultItem": "Chunk",
+    "TaskProcessingMeta": "TaskStatusMetadata",
+}
+
+# Pydantic models that are validated as their own top-level pair in
+# validate_serve_types_schema and therefore must not be re-walked when they
+# appear nested inside another model (the nested walk would re-report the
+# same allowlisted coercions under a different prefix).  ExportDocumentResponse
+# is additionally a deliberate structural divergence: REST inlines serialized
+# strings (md_content, json_content, ...), gRPC carries a typed DoclingDocument
+# plus an Exports message — compared at the message level only.
+_NESTED_LEAF_MODELS: set[str] = {
+    "ConvertDocumentsOptions",
+    "ExportDocumentResponse",
 }
 
 # Proto messages that are oneof wrappers around Pydantic-side types.
@@ -86,6 +133,29 @@ _ONEOF_WRAPPER_MESSAGES: dict[str, set[str]] = {
         "TextItem",
         "FieldHeadingItem",
         "FieldValueItem",
+    },
+    # Serve request unions: Pydantic uses discriminated unions of the
+    # concrete source/target models; gRPC wraps them in a oneof message.
+    # Each arm is validated as its own pair in validate_serve_types_schema.
+    "Source": {
+        "FileSourceRequest",
+        "HttpSourceRequest",
+        "S3SourceRequest",
+        "AzureBlobSourceRequest",
+        "GoogleCloudStorageSourceRequest",
+        "GoogleDriveSourceRequest",
+        "GenericSourceRequest",
+    },
+    "Target": {
+        "InBodyTarget",
+        "ZipTarget",
+        "S3Target",
+        "PutTarget",
+        "PresignedUrlTarget",
+        "AzureBlobTarget",
+        "GoogleCloudStorageTarget",
+        "GoogleDriveTarget",
+        "GenericTargetRequest",
     },
 }
 
@@ -117,6 +187,10 @@ _STRING_COMPATIBLE_TYPES: set[str] = {"Path", "SecretStr", "HttpUrl", "AnyUrl"}
 _FIELD_NAME_ALIASES: dict[str, str] = {
     "cref": "ref",
     "ref": "cref",
+    # DocumentResultItem.document has serialization_alias="content"; the
+    # proto Document message uses the wire name.
+    "document": "content",
+    "content": "document",
 }
 
 # Messages that wrap a base message field (flatten base fields for comparison).
@@ -155,6 +229,10 @@ _PROTO_LEAF_MESSAGES: set[str] = {
     "StringIntPair",
     # Serve ScalarValue is a closed scalar oneof; Pydantic uses Dict[str, Any].
     "ScalarValue",
+    # Validated as their own top-level pairs (see _NESTED_LEAF_MODELS).
+    "ConvertDocumentOptions",
+    "DocumentResponse",
+    "ExportDocumentResponse",
 }
 
 # Proto paths that exist as named fields on the proto side but are
@@ -203,6 +281,15 @@ _PYDANTIC_ONLY_DISCRIMINATORS: dict[str, set[str]] = {
     "AzureBlobTarget": {"kind"},
     "GoogleCloudStorageTarget": {"kind"},
     "GoogleDriveTarget": {"kind"},
+    # Task result variants are encoded as the parent `result` oneof tag on
+    # ConvertSourceResponse / GetConvertResultResponse.
+    "ZipArchiveResult": {"kind"},
+    "TaskFailureResult": {"kind"},
+    # Progress event kinds are encoded as the TaskProgress oneof tag.
+    "ProgressSetNumDocs": {"kind"},
+    "ProgressUpdateProcessed": {"kind"},
+    "ProgressDocumentCompleted": {"kind"},
+    "ProgressTaskCompleted": {"kind"},
 }
 
 
@@ -226,6 +313,17 @@ _RAW_FALLBACK_SUFFIXES: set[str] = {
     # policy uniformity with the other small enums).
     "script_raw",
     "orientation_raw",
+    # Serve response enums: ConversionStatus, FailureCategory/FailurePhase,
+    # QualityGrade, ArtifactType, TaskType, DoclingComponentType, InputFormat.
+    "status_raw",
+    "category_raw",
+    "phase_raw",
+    "mean_grade_raw",
+    "low_grade_raw",
+    "artifact_type_raw",
+    "task_type_raw",
+    "component_type_raw",
+    "document_type_raw",
 }
 
 _WRAPPER_MEMBER_NAMES: set[str] = {
@@ -245,11 +343,16 @@ def _match_pattern(path: str, pattern: str) -> bool:
 
 
 def _is_coercion_allowed(
-    path: str, pydantic_canonical: str, proto_canonical: str
+    path: str, pydantic_canonical: str, proto_canonical: str, context: str = ""
 ) -> bool:
-    """Return True if the (pydantic, proto) mismatch at *path* is allowlisted."""
+    """Return True if the (pydantic, proto) mismatch at *path* is allowlisted.
+
+    Patterns match either the bare field path or the context-qualified path
+    (``"<ProtoMessage>.<path>"``) so a coercion can be scoped to one message.
+    """
+    qualified = f"{context}{path}"
     for pattern, (allowed_py, allowed_pr) in ALLOWED_COERCIONS.items():
-        if _match_pattern(path, pattern):
+        if _match_pattern(path, pattern) or _match_pattern(qualified, pattern):
             # Map key coercion: "map<int,*>" matches "map<int,...>"
             if allowed_py.startswith("map<") and "*>" in allowed_py:
                 py_prefix = allowed_py.split(",")[0]  # "map<int"
@@ -454,6 +557,8 @@ def _collect_pydantic_fields(
         if isinstance(inner_tp, type) and issubclass(inner_tp, BaseModel):
             if _skip_wrapper_members and inner_tp.__name__ in _WRAPPER_MEMBER_NAMES:
                 continue
+            if inner_tp.__name__ in _NESTED_LEAF_MODELS:
+                continue
             result.update(
                 _collect_pydantic_fields(
                     inner_tp,
@@ -474,6 +579,8 @@ def _collect_pydantic_fields(
             item = _resolve_forward_ref(item)
             if isinstance(item, type) and issubclass(item, BaseModel):
                 if _skip_wrapper_members and item.__name__ in _WRAPPER_MEMBER_NAMES:
+                    continue
+                if item.__name__ in _NESTED_LEAF_MODELS:
                     continue
                 result.update(
                     _collect_pydantic_fields(
@@ -680,7 +787,10 @@ def _collect_proto_fields(
             if field.message_type.GetOptions().map_entry:
                 if max_depth is None or _depth < max_depth:
                     val_f = field.message_type.fields_by_name["value"]
-                    if val_f.type == descriptor_mod.FieldDescriptor.TYPE_MESSAGE:
+                    if (
+                        val_f.type == descriptor_mod.FieldDescriptor.TYPE_MESSAGE
+                        and val_f.message_type.name not in _PROTO_LEAF_MESSAGES
+                    ):
                         result.update(
                             _collect_proto_fields(
                                 val_f.message_type,
@@ -750,10 +860,7 @@ def _types_compatible(pydantic_canonical: str, proto_canonical: str) -> bool:
             return True
 
     # SecretStr / Path / URL types serialize as proto string on the wire.
-    if (
-        pydantic_canonical in _STRING_COMPATIBLE_TYPES
-        and proto_canonical == "string"
-    ):
+    if pydantic_canonical in _STRING_COMPATIBLE_TYPES and proto_canonical == "string":
         return True
 
     # Union containing string-compatible types ↔ string
@@ -772,10 +879,20 @@ def _types_compatible(pydantic_canonical: str, proto_canonical: str) -> bool:
             return True
         py_name = pydantic_canonical[8:]
         pr_name = proto_canonical[8:]
+        if _MESSAGE_NAME_EQUIVALENCES.get(py_name) == pr_name:
+            return True
         wrapped = _ONEOF_WRAPPER_MESSAGES.get(pr_name)
         if wrapped and py_name in wrapped:
             return True
         return False
+
+    # union<message:A,message:B,...> ↔ oneof wrapper message (Source/Target).
+    # Arm-level shapes are validated per member; here only the wrapper
+    # relationship is asserted.
+    if pydantic_canonical.startswith("union<") and proto_canonical.startswith(
+        "message:"
+    ):
+        return proto_canonical[8:] in _ONEOF_WRAPPER_MESSAGES
 
     # map<string,Any> ↔ Struct
     if pydantic_canonical == "map<string,Any>" and proto_canonical == "message:Struct":
@@ -828,10 +945,9 @@ def _check_cardinality(
     py_is_union = pydantic_canonical.startswith("union<")
 
     # optional<list<T>> is list-like for proto3 repeated fields (absent => empty).
-    py_is_optional_list = (
-        pydantic_canonical.startswith("optional<list<")
-        and pydantic_canonical.endswith(">")
-    )
+    py_is_optional_list = pydantic_canonical.startswith(
+        "optional<list<"
+    ) and pydantic_canonical.endswith(">")
     if (
         proto_is_list
         and not py_is_list
@@ -880,10 +996,17 @@ def _compare_fields(
     missing_proto: list[str] = []
     missing_pydantic: list[str] = []
 
+    # Paths whose mismatch was allowlisted; their sub-fields are by definition
+    # represented differently on the two sides and must not be re-reported.
+    coerced_paths: set[str] = set()
+
     all_paths = set(pydantic_fields.keys()) | set(proto_fields.keys())
     for path in sorted(all_paths):
         py_type = pydantic_fields.get(path)
         pr_type = proto_fields.get(path)
+
+        if any(path.startswith(parent + ".") for parent in coerced_paths):
+            continue
 
         if py_type is None and pr_type is not None:
             # --- Suppression rulesets for proto-only paths ---
@@ -926,8 +1049,9 @@ def _compare_fields(
 
         card_err = _check_cardinality(path, py_type, pr_type)
         if card_err is not None:
-            if _is_coercion_allowed(path, py_type, pr_type):
+            if _is_coercion_allowed(path, py_type, pr_type, context):
                 allowed.append(f"{context}{path}: {py_type} ↔ {pr_type}")
+                coerced_paths.add(path)
             else:
                 mismatches.append(f"{context}{card_err}")
             continue
@@ -935,8 +1059,9 @@ def _compare_fields(
         if _types_compatible(py_type, pr_type):
             continue
 
-        if _is_coercion_allowed(path, py_type, pr_type):
+        if _is_coercion_allowed(path, py_type, pr_type, context):
             allowed.append(f"{context}{path}: {py_type} ↔ {pr_type}")
+            coerced_paths.add(path)
             continue
 
         mismatches.append(
@@ -953,9 +1078,8 @@ def validate_docling_document_schema() -> None:
     Logs warnings for missing fields.
     Logs info for allowed coercions.
     """
-    from docling_core.types.doc.document import DoclingDocument
-
     from docling_core.proto.gen.ai.docling.core.v1 import docling_document_pb2 as pb2
+    from docling_core.types.doc.document import DoclingDocument
 
     pydantic_fields = _collect_pydantic_fields(DoclingDocument)
     proto_fields = _collect_proto_fields(pb2.DoclingDocument.DESCRIPTOR)
@@ -1023,15 +1147,43 @@ def validate_serve_types_schema() -> None:
     Raises RuntimeError on incompatible type mismatches (not in allowlist).
     Logs warnings for missing fields.
     """
+    from docling.datamodel.base_models import ErrorItem
+    from docling.datamodel.service.callbacks import (
+        CallbackSpec,
+        DocumentCompletedItem,
+        ProcessedDocsItem,
+        ProgressDocumentCompleted,
+        ProgressSetNumDocs,
+        ProgressTaskCompleted,
+        ProgressUpdateProcessed,
+    )
     from docling.datamodel.service.options import ConvertDocumentsOptions
     from docling.datamodel.service.requests import (
         AzureBlobSourceRequest,
+        BatchConvertSourcesRequest,
+        ConvertSourcesRequest,
         FileSourceRequest,
         GenericSourceRequest,
+        GenericTargetRequest,
         GoogleCloudStorageSourceRequest,
         GoogleDriveSourceRequest,
         HttpSourceRequest,
         S3SourceRequest,
+    )
+    from docling.datamodel.service.responses import (
+        ArtifactRef,
+        ChunkDocumentResponse,
+        ChunkedDocumentResultItem,
+        ConfidenceScores,
+        ConvertDocumentResponse,
+        DocumentArtifactItem,
+        DocumentResultItem,
+        PresignedUrlConvertDocumentResponse,
+        PresignedUrlConvertResponse,
+        PublicFailureInfo,
+        TaskFailureResult,
+        TaskStatusResponse,
+        ZipArchiveResult,
     )
     from docling.datamodel.service.targets import (
         AzureBlobTarget,
@@ -1043,6 +1195,7 @@ def validate_serve_types_schema() -> None:
         S3Target,
         ZipTarget,
     )
+    from docling.datamodel.service.tasks import TaskProcessingMeta
 
     from docling_serve.policy import ALL_SOURCE_TYPES, ALL_TARGET_TYPES
 
@@ -1065,6 +1218,34 @@ def validate_serve_types_schema() -> None:
         (AzureBlobTarget, "AzureBlobTarget"),
         (GoogleCloudStorageTarget, "GoogleCloudStorageTarget"),
         (GoogleDriveTarget, "GoogleDriveTarget"),
+        (GenericTargetRequest, "GenericTarget"),
+        # Request envelopes
+        (ConvertSourcesRequest, "ConvertDocumentRequest"),
+        (BatchConvertSourcesRequest, "BatchConvertDocumentRequest"),
+        (CallbackSpec, "CallbackSpec"),
+        # Response side
+        (ErrorItem, "ErrorItem"),
+        (ConfidenceScores, "ConfidenceScores"),
+        (PublicFailureInfo, "PublicFailureInfo"),
+        (ArtifactRef, "ArtifactRef"),
+        (DocumentResultItem, "Document"),
+        (DocumentArtifactItem, "DocumentArtifactItem"),
+        (ConvertDocumentResponse, "ConvertDocumentResponse"),
+        (ChunkedDocumentResultItem, "Chunk"),
+        (ChunkDocumentResponse, "ChunkDocumentResponse"),
+        (ZipArchiveResult, "ZipArchiveResult"),
+        (PresignedUrlConvertDocumentResponse, "RemoteTargetResult"),
+        (PresignedUrlConvertResponse, "PresignedArtifactResult"),
+        (TaskFailureResult, "TaskFailureResult"),
+        (TaskProcessingMeta, "TaskStatusMetadata"),
+        (TaskStatusResponse, "TaskStatusPollResponse"),
+        # Progress callbacks (mirrored on the stream envelope as TaskProgress)
+        (ProgressSetNumDocs, "ProgressSetNumDocs"),
+        (ProcessedDocsItem, "ProcessedDocsItem"),
+        (ProgressUpdateProcessed, "ProgressUpdateProcessed"),
+        (DocumentCompletedItem, "DocumentCompletedItem"),
+        (ProgressDocumentCompleted, "ProgressDocumentCompleted"),
+        (ProgressTaskCompleted, "ProgressTaskCompleted"),
     ]
 
     mismatches: list[str] = []
@@ -1077,7 +1258,9 @@ def validate_serve_types_schema() -> None:
     for model_cls, proto_name in pairs:
         descriptor = pb2.DESCRIPTOR.message_types_by_name.get(proto_name)
         if descriptor is None:
-            mismatches.append(f"Missing proto message '{proto_name}' for {model_cls.__name__}")
+            mismatches.append(
+                f"Missing proto message '{proto_name}' for {model_cls.__name__}"
+            )
             continue
         py_fields = _collect_pydantic_fields(model_cls)
         pr_fields = _collect_proto_fields(descriptor)

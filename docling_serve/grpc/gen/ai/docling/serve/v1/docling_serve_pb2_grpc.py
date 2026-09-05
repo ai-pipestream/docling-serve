@@ -58,6 +58,11 @@ class DoclingServeServiceStub:
                 request_serializer=ai_dot_docling_dot_serve_dot_v1_dot_docling__serve__pb2.ConvertSourceAsyncRequest.SerializeToString,
                 response_deserializer=ai_dot_docling_dot_serve_dot_v1_dot_docling__serve__pb2.ConvertSourceAsyncResponse.FromString,
                 _registered_method=True)
+        self.ConvertSourceBatch = channel.unary_unary(
+                '/ai.docling.serve.v1.DoclingServeService/ConvertSourceBatch',
+                request_serializer=ai_dot_docling_dot_serve_dot_v1_dot_docling__serve__pb2.ConvertSourceBatchRequest.SerializeToString,
+                response_deserializer=ai_dot_docling_dot_serve_dot_v1_dot_docling__serve__pb2.ConvertSourceBatchResponse.FromString,
+                _registered_method=True)
         self.ChunkHierarchicalSource = channel.unary_unary(
                 '/ai.docling.serve.v1.DoclingServeService/ChunkHierarchicalSource',
                 request_serializer=ai_dot_docling_dot_serve_dot_v1_dot_docling__serve__pb2.ChunkHierarchicalSourceRequest.SerializeToString,
@@ -153,6 +158,14 @@ class DoclingServeServiceServicer:
 
     def ConvertSourceAsync(self, request, context):
         """Asynchronous document conversion - submits the task and returns status immediately.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ConvertSourceBatch(self, request, context):
+        """Batch conversion from storage connectors to storage / presigned targets -
+        mirrors POST /v1/convert/source/batch (always async; poll for status).
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -273,6 +286,11 @@ def add_DoclingServeServiceServicer_to_server(servicer, server):
                     servicer.ConvertSourceAsync,
                     request_deserializer=ai_dot_docling_dot_serve_dot_v1_dot_docling__serve__pb2.ConvertSourceAsyncRequest.FromString,
                     response_serializer=ai_dot_docling_dot_serve_dot_v1_dot_docling__serve__pb2.ConvertSourceAsyncResponse.SerializeToString,
+            ),
+            'ConvertSourceBatch': grpc.unary_unary_rpc_method_handler(
+                    servicer.ConvertSourceBatch,
+                    request_deserializer=ai_dot_docling_dot_serve_dot_v1_dot_docling__serve__pb2.ConvertSourceBatchRequest.FromString,
+                    response_serializer=ai_dot_docling_dot_serve_dot_v1_dot_docling__serve__pb2.ConvertSourceBatchResponse.SerializeToString,
             ),
             'ChunkHierarchicalSource': grpc.unary_unary_rpc_method_handler(
                     servicer.ChunkHierarchicalSource,
@@ -430,6 +448,33 @@ class DoclingServeService:
             '/ai.docling.serve.v1.DoclingServeService/ConvertSourceAsync',
             ai_dot_docling_dot_serve_dot_v1_dot_docling__serve__pb2.ConvertSourceAsyncRequest.SerializeToString,
             ai_dot_docling_dot_serve_dot_v1_dot_docling__serve__pb2.ConvertSourceAsyncResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ConvertSourceBatch(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/ai.docling.serve.v1.DoclingServeService/ConvertSourceBatch',
+            ai_dot_docling_dot_serve_dot_v1_dot_docling__serve__pb2.ConvertSourceBatchRequest.SerializeToString,
+            ai_dot_docling_dot_serve_dot_v1_dot_docling__serve__pb2.ConvertSourceBatchResponse.FromString,
             options,
             channel_credentials,
             insecure,

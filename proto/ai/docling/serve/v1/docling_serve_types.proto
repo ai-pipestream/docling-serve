@@ -172,6 +172,60 @@ enum TaskStatus {
   TASK_STATUS_FAILURE = 4;
 }
 
+// TaskType mirrors docling's TaskType enum (convert | chunk).
+enum TaskType {
+  TASK_TYPE_UNSPECIFIED = 0;
+  TASK_TYPE_CONVERT = 1;
+  TASK_TYPE_CHUNK = 2;
+}
+
+// QualityGrade mirrors docling's QualityGrade. Pydantic's "unspecified" member
+// maps to the zero value; the *_raw companion carries any newer grade name.
+enum QualityGrade {
+  QUALITY_GRADE_UNSPECIFIED = 0;
+  QUALITY_GRADE_POOR = 1;
+  QUALITY_GRADE_FAIR = 2;
+  QUALITY_GRADE_GOOD = 3;
+  QUALITY_GRADE_EXCELLENT = 4;
+}
+
+// FailureCategory mirrors docling's FailureCategory (shared by task-scope
+// PublicFailureInfo and document-scope errors).
+enum FailureCategory {
+  FAILURE_CATEGORY_UNSPECIFIED = 0;
+  FAILURE_CATEGORY_POLICY = 1;
+  FAILURE_CATEGORY_CAPACITY = 2;
+  FAILURE_CATEGORY_SOURCE_UNAVAILABLE = 3;
+  FAILURE_CATEGORY_TARGET_UNAVAILABLE = 4;
+  FAILURE_CATEGORY_TIMEOUT = 5;
+  FAILURE_CATEGORY_INTERNAL = 6;
+  FAILURE_CATEGORY_BACKEND_FAILURE = 7;
+  FAILURE_CATEGORY_INFERENCE_FAILURE = 8;
+  FAILURE_CATEGORY_UNKNOWN = 9;
+}
+
+// FailurePhase mirrors docling's FailurePhase.
+enum FailurePhase {
+  FAILURE_PHASE_UNSPECIFIED = 0;
+  FAILURE_PHASE_ADMISSION = 1;
+  FAILURE_PHASE_SOURCE_ENUMERATION = 2;
+  FAILURE_PHASE_EXECUTION = 3;
+  FAILURE_PHASE_ORCHESTRATION = 4;
+}
+
+// ArtifactType mirrors the ArtifactRef.artifact_type literal set.
+enum ArtifactType {
+  ARTIFACT_TYPE_UNSPECIFIED = 0;
+  ARTIFACT_TYPE_JSON = 1;
+  ARTIFACT_TYPE_HTML = 2;
+  ARTIFACT_TYPE_MARKDOWN = 3;
+  ARTIFACT_TYPE_TEXT = 4;
+  ARTIFACT_TYPE_DOCTAGS = 5;
+  ARTIFACT_TYPE_DOCLANG = 6;
+  ARTIFACT_TYPE_DCLX = 7;
+  ARTIFACT_TYPE_RESOURCE_BUNDLE = 8;
+}
+
 enum PictureClassificationLabel {
   PICTURE_CLASSIFICATION_LABEL_UNSPECIFIED = 0;
   PICTURE_CLASSIFICATION_LABEL_BAR_CHART = 1;
@@ -238,6 +292,8 @@ message ScalarValue {
     int64 int_value = 2;
     double double_value = 3;
     bool bool_value = 4;
+    // Integers above int64 range (e.g. DocumentOrigin.binary_hash).
+    uint64 uint_value = 5;
   }
 }
 
@@ -343,7 +399,17 @@ message Target {
     AzureBlobTarget azure_blob = 6;
     GoogleCloudStorageTarget google_cloud_storage = 7;
     GoogleDriveTarget google_drive = 8;
+    // Plugin escape hatch mirroring GenericTargetRequest (kind + extra fields).
+    // Only accepted on the batch RPC, matching the REST batch endpoint.
+    GenericTarget generic = 9;
   }
+}
+
+// GenericTarget mirrors GenericTargetRequest: a registry kind plus its
+// connector-specific configuration as a typed scalar bag.
+message GenericTarget {
+  string kind = 1;
+  map<string, ScalarValue> attributes = 2;
 }
 
 message InBodyTarget {}
@@ -574,6 +640,15 @@ message ConvertDocumentOptions {
   optional HeadingHierarchyOptions pdf_heading_hierarchy_options = 46;
   // Docling >=2.122: compact markdown tables without column padding.
   optional bool md_compact_tables = 47;
+  // Chunking preset id used when OUTPUT_FORMAT_CHUNKS is requested
+  // (e.g. "granite_embedding_278m"). Mutually exclusive with chunking_options.
+  optional string chunking_preset = 48;
+  // Chunker configuration for OUTPUT_FORMAT_CHUNKS; mirrors the Pydantic
+  // `chunker`-discriminated union. Mutually exclusive with chunking_preset.
+  oneof chunking_options {
+    HierarchicalChunkerOptions hierarchical_chunking = 49;
+    HybridChunkerOptions hybrid_chunking = 50;
+  }
 }
 
 // ============================================================================
@@ -610,6 +685,72 @@ message ErrorItem {
   // docling component vocabularies (populated when component_type is
   // DOCLING_COMPONENT_TYPE_UNSPECIFIED but the source had a value).
   optional string component_type_raw = 4;
+  // Semantic category of the error for filtering (docling ErrorItem.category).
+  FailureCategory category = 5;
+  optional string category_raw = 6;
+  // 1-indexed page the error is attributable to; unset for document-scoped
+  // errors (docling ErrorItem.page_no).
+  optional int32 page_no = 7;
+}
+
+// PublicFailureInfo mirrors docling's task-scope failure model. Populated on
+// TaskStatusPollResponse.failure and TaskFailureResult.failure.
+message PublicFailureInfo {
+  FailureCategory category = 1;
+  string message = 2;
+  bool retryable = 3;
+  FailurePhase phase = 4;
+  // Pydantic dict[str, str]; jobkit only emits allow-listed string keys.
+  map<string, string> details = 5;
+  // Raw fallbacks for newer category / phase vocabularies.
+  optional string category_raw = 6;
+  optional string phase_raw = 7;
+}
+
+// ============================================================================
+// Quality / artifact types
+// ============================================================================
+
+// ConfidenceScores mirrors docling's JSON-safe confidence snapshot. Scores are
+// document-level; Pydantic coerces NaN to null, so absent means unknown.
+message ConfidenceScores {
+  optional double parse_score = 1;
+  optional double layout_score = 2;
+  optional double table_score = 3;
+  optional double ocr_score = 4;
+  optional double mean_score = 5;
+  optional double low_score = 6;
+  QualityGrade mean_grade = 7;
+  QualityGrade low_grade = 8;
+  // Raw fallbacks for newer grade vocabularies.
+  optional string mean_grade_raw = 9;
+  optional string low_grade_raw = 10;
+}
+
+// ArtifactRef mirrors docling's ArtifactRef: one exported artifact reachable
+// through a (usually presigned) URI.
+message ArtifactRef {
+  ArtifactType artifact_type = 1;
+  string mime_type = 2;
+  string uri = 3;
+  // Pydantic datetime | None, carried as RFC 3339 text.
+  optional string url_expires_at = 4;
+  // Raw fallback for newer artifact type vocabularies.
+  optional string artifact_type_raw = 5;
+}
+
+// DocumentArtifactItem mirrors docling's per-document result for
+// PresignedUrlTarget responses.
+message DocumentArtifactItem {
+  int32 source_index = 1;
+  string source_uri = 2;
+  string filename = 3;
+  ConversionStatus status = 4;
+  repeated ErrorItem errors = 5;
+  map<string, double> timings = 6;
+  repeated ArtifactRef artifacts = 7;
+  optional ConfidenceScores confidence = 8;
+  optional string status_raw = 9;
 }
 
 // ============================================================================
@@ -656,18 +797,134 @@ message Document {
   // Raw status fallback for forward-compatibility with newer docling
   // conversion status vocabularies.
   optional string status_raw = 5;
+  // Per-document profiling totals (seconds), keyed by stage.
+  map<string, double> timings = 6;
+  optional ConfidenceScores confidence = 7;
 }
 
 // ============================================================================
 // Task types
 // ============================================================================
 
-// TaskStatusMetadata provides progress information for async tasks.
+// TaskStatusMetadata mirrors TaskProcessingMeta.
 message TaskStatusMetadata {
   int64 num_docs = 1;
   int64 num_processed = 2;
   int64 num_succeeded = 3;
   int64 num_failed = 4;
+  int64 num_partially_succeeded = 5;
+}
+
+// CallbackSpec mirrors docling's CallbackSpec: an HTTP endpoint the
+// orchestrator POSTs progress updates to (see ProgressCallbackRequest).
+message CallbackSpec {
+  string url = 1;
+  map<string, string> headers = 2;
+  string ca_cert = 3;
+}
+
+// ============================================================================
+// Result union members (mirror docling's DoclingTaskResult.result arms)
+// ============================================================================
+
+// ZipArchiveResult mirrors docling's ZipArchiveResult (ZipTarget).
+message ZipArchiveResult {
+  bytes content = 1;
+}
+
+// RemoteTargetResult mirrors the REST PresignedUrlConvertDocumentResponse
+// returned for S3 / Azure / GCS / Drive / Put targets: counts only, the
+// documents were pushed to the remote target.
+message RemoteTargetResult {
+  double processing_time = 1;
+  int64 num_converted = 2;
+  int64 num_succeeded = 3;
+  int64 num_partially_succeeded = 4;
+  int64 num_failed = 5;
+}
+
+// PresignedArtifactResult mirrors the REST PresignedUrlConvertResponse
+// returned for PresignedUrlTarget: counts plus per-document artifact refs.
+message PresignedArtifactResult {
+  double processing_time = 1;
+  int64 num_converted = 2;
+  int64 num_succeeded = 3;
+  int64 num_partially_succeeded = 4;
+  int64 num_failed = 5;
+  repeated DocumentArtifactItem documents = 6;
+}
+
+// TaskFailureResult mirrors docling's TaskFailureResult: the task finished
+// with a task-scope failure and produced no documents.
+message TaskFailureResult {
+  PublicFailureInfo failure = 1;
+}
+
+// ============================================================================
+// Progress kinds (mirror docling's ProgressCallbackRequest.progress union)
+// ============================================================================
+
+// ProgressSetNumDocs mirrors docling's ProgressSetNumDocs.
+message ProgressSetNumDocs {
+  int64 num_docs = 1;
+}
+
+// ProcessedDocsItem mirrors docling's ProcessedDocsItem.
+message ProcessedDocsItem {
+  string source = 1;
+  ConversionStatus status = 2;
+  optional string error = 3;
+  optional string status_raw = 4;
+}
+
+// ProgressUpdateProcessed mirrors docling's ProgressUpdateProcessed.
+message ProgressUpdateProcessed {
+  int64 num_processed = 1;
+  int64 num_succeeded = 2;
+  int64 num_partially_succeeded = 3;
+  int64 num_failed = 4;
+  repeated ProcessedDocsItem docs = 5;
+}
+
+// DocumentCompletedItem mirrors docling's DocumentCompletedItem.
+message DocumentCompletedItem {
+  string source = 1;
+  ConversionStatus status = 2;
+  optional InputFormat document_type = 3;
+  optional int64 num_pages = 4;
+  optional int64 num_characters = 5;
+  optional int64 num_tables = 6;
+  optional int64 num_pictures = 7;
+  optional double processing_time = 8;
+  optional string doc_hash = 9;
+  optional string error = 10;
+  optional string status_raw = 11;
+  optional string document_type_raw = 12;
+}
+
+// ProgressDocumentCompleted mirrors docling's ProgressDocumentCompleted.
+message ProgressDocumentCompleted {
+  DocumentCompletedItem document = 1;
+  int64 total_processed = 2;
+  optional int64 total_docs = 3;
+}
+
+// ProgressTaskCompleted mirrors docling's ProgressTaskCompleted. task_status is
+// Literal["success", "failure"] upstream; only those TaskStatus members occur.
+message ProgressTaskCompleted {
+  TaskStatus task_status = 1;
+  optional PublicFailureInfo failure = 2;
+}
+
+// TaskProgress is the typed union of docling progress kinds. Pydantic
+// discriminates on `kind`; the oneof tag carries that here.
+message TaskProgress {
+  oneof progress {
+    ProgressSetNumDocs set_num_docs = 1;
+    ProgressUpdateProcessed update_processed = 2;
+    ProgressDocumentCompleted document_completed = 3;
+    ProgressTaskCompleted task_completed = 4;
+  }
 }
 
 // ============================================================================
@@ -679,6 +936,22 @@ message ConvertDocumentRequest {
   repeated Source sources = 1;
   ConvertDocumentOptions options = 2;
   optional Target target = 3;
+  // Progress callbacks (ConvertSourcesRequest.callbacks). Rejected when the
+  // service policy disables callbacks.
+  repeated CallbackSpec callbacks = 4;
+}
+
+// BatchConvertDocumentRequest mirrors POST /v1/convert/source/batch
+// (BatchConvertSourcesRequest). Sources are storage connectors (http, s3,
+// azure_blob, google_cloud_storage, google_drive, generic); targets are
+// storage targets or presigned_url. `targets` takes precedence over the
+// singular `target` convenience field; at least one is required.
+message BatchConvertDocumentRequest {
+  ConvertDocumentOptions options = 1;
+  repeated Source sources = 2;
+  optional Target target = 3;
+  repeated Target targets = 4;
+  repeated CallbackSpec callbacks = 5;
 }
 
 // ConvertDocumentResponse mirrors the REST convert response body.
@@ -691,6 +964,7 @@ message ConvertDocumentResponse {
   // Raw status fallback for forward-compatibility with newer docling
   // conversion status vocabularies.
   optional string status_raw = 6;
+  optional ConfidenceScores confidence = 7;
 }
 
 // HierarchicalChunkerOptions configures the hierarchical chunker.
@@ -719,6 +993,7 @@ message HierarchicalChunkRequest {
   optional Target target = 3;
   bool include_converted_doc = 4;
   HierarchicalChunkerOptions chunking_options = 5;
+  repeated CallbackSpec callbacks = 6;
 }
 
 // HybridChunkRequest mirrors POST /v1/chunk/hybrid/source
@@ -728,10 +1003,14 @@ message HybridChunkRequest {
   optional Target target = 3;
   bool include_converted_doc = 4;
   HybridChunkerOptions chunking_options = 5;
+  repeated CallbackSpec callbacks = 6;
 }
 
 // Chunk represents a single document chunk in the response.
 message Chunk {
+  // Tag 10 carried metadata as map<string, string> (lossy str() coercion).
+  reserved 10;
+
   string filename = 1;
   int32 chunk_index = 2;
   string text = 3;
@@ -741,7 +1020,8 @@ message Chunk {
   repeated string captions = 7;
   repeated string doc_items = 8;
   repeated int32 page_numbers = 9;
-  map<string, string> metadata = 10;
+  // Pydantic dict | None: chunker-specific scalars keep their types.
+  map<string, ScalarValue> metadata = 11;
 }
 
 // ChunkDocumentResponse mirrors the REST chunk response body.
@@ -758,13 +1038,22 @@ message TaskStatusPollRequest {
   double wait_time = 2;
 }
 
-// TaskStatusPollResponse mirrors the REST task status response.
+// TaskStatusPollResponse mirrors the REST TaskStatusResponse.
 message TaskStatusPollResponse {
+  // Tag 2 carried task_type as a free string.
+  reserved 2;
+
   string task_id = 1;
-  optional string task_type = 2;
   TaskStatus task_status = 3;
   optional int64 task_position = 4;
   optional TaskStatusMetadata task_meta = 5;
+  TaskType task_type = 6;
+  // Raw fallback for newer task type vocabularies.
+  optional string task_type_raw = 7;
+  // Sanitized public error text for failed tasks (build_public_task_error).
+  optional string error_message = 8;
+  // Structured task-scope failure for failed tasks.
+  optional PublicFailureInfo failure = 9;
 }
 
 // TaskResultRequest mirrors GET /v1/result/{taskId}

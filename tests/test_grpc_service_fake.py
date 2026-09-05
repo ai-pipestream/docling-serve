@@ -7,7 +7,20 @@ import grpc
 import pytest
 import pytest_asyncio
 
-from docling.datamodel.base_models import ConversionStatus
+from docling.datamodel.base_models import ConversionStatus, ErrorItem
+from docling.datamodel.document import DoclingComponentType
+from docling.datamodel.service.responses import (
+    ArtifactRef,
+    ConfidenceScores,
+    DocumentArtifactItem,
+    FailureCategory,
+    FailurePhase,
+    PresignedArtifactResult,
+    PublicFailureInfo,
+    QualityGrade,
+    RemoteTargetResult,
+    ZipArchiveResult,
+)
 from docling_core.types.doc.document import DoclingDocument
 from docling_jobkit.datamodel.result import (
     ChunkedDocumentResult,
@@ -16,9 +29,13 @@ from docling_jobkit.datamodel.result import (
     ExportDocumentResponse,
     ExportResult,
 )
+from docling_jobkit.datamodel.stored_outcome import StoredFailureOutcome
 from docling_jobkit.datamodel.task import Task
 from docling_jobkit.datamodel.task_meta import TaskProcessingMeta, TaskStatus, TaskType
-from docling_jobkit.orchestrators.base_orchestrator import TaskNotFoundError
+from docling_jobkit.orchestrators.base_orchestrator import (
+    RedisBackpressureError,
+    TaskNotFoundError,
+)
 
 from docling_serve.grpc.gen.ai.docling.serve.v1 import (
     docling_serve_pb2,
@@ -43,7 +60,10 @@ class FakeOrchestrator:
     def __init__(self) -> None:
         self.tasks: dict[str, Task] = {}
         self.results: dict[str, DoclingTaskResult] = {}
+        # Task-scope failures persisted as stored outcomes (Redis/RQ style).
+        self.failures: dict[str, StoredFailureOutcome] = {}
         self.positions: dict[str, int] = {}
+        self.enqueue_kwargs: list[dict] = []
         self.cleared_converters = False
         self.cleared_results: list[float] = []
         self.deleted_tasks: list[str] = []
@@ -57,17 +77,37 @@ class FakeOrchestrator:
         await self._stop.wait()
 
     async def enqueue(
-        self, *, task_type, sources, convert_options, target, **kwargs
+        self,
+        *,
+        task_type,
+        sources,
+        convert_options,
+        target=None,
+        targets=None,
+        callbacks=None,
+        **kwargs,
     ) -> Task:
         self._counter += 1
         task_id = f"task-{self._counter}"
+        self.enqueue_kwargs.append(
+            {
+                "task_type": task_type,
+                "sources": sources,
+                "target": target,
+                "targets": targets,
+                "callbacks": callbacks,
+                **kwargs,
+            }
+        )
         task = Task(
             task_id=task_id,
             task_type=task_type,
             task_status=TaskStatus.SUCCESS,
             sources=sources,
             target=target,
+            targets=targets,
             convert_options=convert_options,
+            callbacks=callbacks or [],
         )
         self.tasks[task_id] = task
         self.positions[task_id] = 0
@@ -99,6 +139,11 @@ class FakeOrchestrator:
         return self.positions.get(task_id, 0)
 
     async def task_result(self, *, task_id: str):
+        return self.results.get(task_id)
+
+    async def task_outcome(self, *, task_id: str):
+        if task_id in self.failures:
+            return self.failures[task_id]
         return self.results.get(task_id)
 
     async def clear_converters(self) -> None:
@@ -220,6 +265,74 @@ async def test_stream_document_emits_status_and_final(streaming_stub):
     assert last.WhichOneof("payload") == "status"
     assert last.status.phase == docling_serve_stream_pb2.StreamStatus.PHASE_COMPLETED
 
+    # Typed progress kinds mirror docling's ProgressCallbackRequest union.
+    progress_kinds = [
+        e.progress.WhichOneof("progress") for e in envelopes if e.HasField("progress")
+    ]
+    assert progress_kinds[0] == "set_num_docs"
+    assert progress_kinds[-1] == "task_completed"
+    set_num_docs = next(e for e in envelopes if e.HasField("progress")).progress
+    assert set_num_docs.set_num_docs.num_docs == 1
+    completed = [e for e in envelopes if e.HasField("progress")][-1].progress
+    assert (
+        completed.task_completed.task_status
+        == docling_serve_types_pb2.TASK_STATUS_SUCCESS
+    )
+    assert not completed.task_completed.HasField("failure")
+    assert "document_completed" not in progress_kinds  # Phase 2 reserved
+
+
+@pytest.mark.asyncio
+async def test_stream_document_invalid_request_yields_typed_error(streaming_stub):
+    """Validation failures arrive as a StreamError envelope with an enum code."""
+    request = docling_serve_stream_pb2.StreamDocumentRequest(
+        request_id="bad-1",
+        request=docling_serve_types_pb2.ConvertDocumentRequest(
+            sources=[docling_serve_types_pb2.Source()]
+        ),
+    )
+
+    envelopes = [e async for e in streaming_stub.StreamDocument(request)]
+
+    assert envelopes[0].WhichOneof("payload") == "status"
+    last = envelopes[-1]
+    assert last.WhichOneof("payload") == "error"
+    assert (
+        last.error.code == docling_serve_stream_pb2.STREAM_ERROR_CODE_INVALID_ARGUMENT
+    )
+    assert last.error.terminal is True
+    assert "no variant set" in last.error.message
+    assert not last.error.HasField("failure")
+
+
+@pytest.mark.asyncio
+async def test_stream_document_task_failure_yields_convert_failed():
+    """A failed task ends the stream with CONVERT_FAILED + PublicFailureInfo."""
+    request = docling_serve_stream_pb2.StreamDocumentRequest(
+        request_id="fail-1", request=_dummy_convert_request()
+    )
+    async with _server_with(orchestrator=FailingTaskOrchestrator(), streaming=True) as (
+        _,
+        streaming_stub,
+    ):
+        envelopes = [e async for e in streaming_stub.StreamDocument(request)]
+
+    last = envelopes[-1]
+    assert last.WhichOneof("payload") == "error"
+    assert last.error.code == docling_serve_stream_pb2.STREAM_ERROR_CODE_CONVERT_FAILED
+    assert last.error.message == "onnxruntime is not installed."
+    assert (
+        last.error.failure.category
+        == docling_serve_types_pb2.FAILURE_CATEGORY_BACKEND_FAILURE
+    )
+    completed = [e for e in envelopes if e.HasField("progress")][-1].progress
+    assert (
+        completed.task_completed.task_status
+        == docling_serve_types_pb2.TASK_STATUS_FAILURE
+    )
+    assert completed.task_completed.failure.message == "onnxruntime is not installed."
+    assert not any(e.HasField("final_document") for e in envelopes)
+
 
 @pytest.mark.asyncio
 async def test_convert_source_empty_sources_invalid_argument(grpc_stub):
@@ -260,6 +373,201 @@ async def test_get_convert_result(grpc_stub, orchestrator):
 
     assert not response.response.document.HasField("exports")
     assert response.response.document.doc.schema_name == "DoclingDocument"
+    assert response.WhichOneof("result") == "response"
+
+
+def _failure(message="boom") -> PublicFailureInfo:
+    return PublicFailureInfo(
+        category=FailureCategory.SOURCE_UNAVAILABLE,
+        message=message,
+        retryable=True,
+        phase=FailurePhase.SOURCE_ENUMERATION,
+        details={"source": "s3://bucket/key"},
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_convert_result_failure_arm(grpc_stub, orchestrator):
+    """A stored task-scope failure is returned on the `failure` oneof arm."""
+    orchestrator.failures["convert-failed"] = StoredFailureOutcome(failure=_failure())
+
+    response = await grpc_stub.GetConvertResult(
+        docling_serve_pb2.GetConvertResultRequest(
+            request=docling_serve_types_pb2.TaskResultRequest(task_id="convert-failed")
+        )
+    )
+
+    assert response.WhichOneof("result") == "failure"
+    failure = response.failure.failure
+    assert (
+        failure.category == docling_serve_types_pb2.FAILURE_CATEGORY_SOURCE_UNAVAILABLE
+    )
+    assert failure.phase == docling_serve_types_pb2.FAILURE_PHASE_SOURCE_ENUMERATION
+    assert failure.message == "boom"
+    assert failure.retryable is True
+    assert dict(failure.details) == {"source": "s3://bucket/key"}
+    assert not failure.HasField("category_raw")
+
+
+@pytest.mark.asyncio
+async def test_get_convert_result_zip_arm(grpc_stub, orchestrator):
+    orchestrator.results["zip-1"] = DoclingTaskResult(
+        result=ZipArchiveResult(content=b"PK\x03\x04zip"),
+        processing_time=0.3,
+        num_converted=2,
+        num_succeeded=2,
+        num_failed=0,
+    )
+
+    response = await grpc_stub.GetConvertResult(
+        docling_serve_pb2.GetConvertResultRequest(
+            request=docling_serve_types_pb2.TaskResultRequest(task_id="zip-1")
+        )
+    )
+
+    assert response.WhichOneof("result") == "zip_archive"
+    assert response.zip_archive.content == b"PK\x03\x04zip"
+
+
+@pytest.mark.asyncio
+async def test_get_convert_result_remote_target_arm(grpc_stub, orchestrator):
+    orchestrator.results["remote-1"] = DoclingTaskResult(
+        result=RemoteTargetResult(),
+        processing_time=1.5,
+        num_converted=3,
+        num_succeeded=1,
+        num_partially_succeeded=1,
+        num_failed=1,
+    )
+
+    response = await grpc_stub.GetConvertResult(
+        docling_serve_pb2.GetConvertResultRequest(
+            request=docling_serve_types_pb2.TaskResultRequest(task_id="remote-1")
+        )
+    )
+
+    assert response.WhichOneof("result") == "remote_target"
+    remote = response.remote_target
+    assert remote.num_converted == 3
+    assert remote.num_succeeded == 1
+    assert remote.num_partially_succeeded == 1
+    assert remote.num_failed == 1
+    assert remote.processing_time == pytest.approx(1.5)
+
+
+@pytest.mark.asyncio
+async def test_get_convert_result_presigned_artifacts_arm(grpc_stub, orchestrator):
+    """Presigned results carry typed ArtifactRef / ConfidenceScores / ErrorItem."""
+    from datetime import datetime, timezone
+
+    expires = datetime(2030, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+    item = DocumentArtifactItem(
+        source_index=0,
+        source_uri="s3://in/doc.pdf",
+        filename="doc.pdf",
+        status=ConversionStatus.PARTIAL_SUCCESS,
+        errors=[
+            ErrorItem(
+                component_type=DoclingComponentType.MODEL,
+                module_name="ocr",
+                error_message="page skipped",
+                category=FailureCategory.INFERENCE_FAILURE,
+                page_no=3,
+            )
+        ],
+        artifacts=[
+            ArtifactRef(
+                artifact_type="json",
+                mime_type="application/json",
+                uri="https://example.com/doc.json?sig=abc",
+                url_expires_at=expires,
+            ),
+            ArtifactRef(
+                artifact_type="resource_bundle",
+                mime_type="application/zip",
+                uri="https://example.com/doc.zip",
+            ),
+        ],
+        confidence=ConfidenceScores(
+            parse_score=0.9,
+            mean_score=0.8,
+            low_score=0.4,
+            mean_grade=QualityGrade.GOOD,
+            low_grade=QualityGrade.POOR,
+        ),
+    )
+    orchestrator.results["presigned-1"] = DoclingTaskResult(
+        result=PresignedArtifactResult(documents=[item]),
+        processing_time=2.0,
+        num_converted=1,
+        num_succeeded=0,
+        num_partially_succeeded=1,
+        num_failed=0,
+    )
+
+    response = await grpc_stub.GetConvertResult(
+        docling_serve_pb2.GetConvertResultRequest(
+            request=docling_serve_types_pb2.TaskResultRequest(task_id="presigned-1")
+        )
+    )
+
+    assert response.WhichOneof("result") == "presigned_artifacts"
+    result = response.presigned_artifacts
+    assert result.num_partially_succeeded == 1
+    [doc] = result.documents
+    assert doc.source_uri == "s3://in/doc.pdf"
+    assert doc.status == docling_serve_types_pb2.CONVERSION_STATUS_PARTIAL_SUCCESS
+
+    [error] = doc.errors
+    assert error.component_type == docling_serve_types_pb2.DOCLING_COMPONENT_TYPE_MODEL
+    assert error.category == docling_serve_types_pb2.FAILURE_CATEGORY_INFERENCE_FAILURE
+    assert error.page_no == 3
+
+    json_ref, bundle_ref = doc.artifacts
+    assert json_ref.artifact_type == docling_serve_types_pb2.ARTIFACT_TYPE_JSON
+    assert json_ref.uri == "https://example.com/doc.json?sig=abc"
+    assert json_ref.url_expires_at == expires.isoformat()
+    assert (
+        bundle_ref.artifact_type
+        == docling_serve_types_pb2.ARTIFACT_TYPE_RESOURCE_BUNDLE
+    )
+    assert not bundle_ref.HasField("url_expires_at")
+
+    assert doc.HasField("confidence")
+    assert doc.confidence.parse_score == pytest.approx(0.9)
+    assert not doc.confidence.HasField("ocr_score")
+    assert doc.confidence.mean_grade == docling_serve_types_pb2.QUALITY_GRADE_GOOD
+    assert doc.confidence.low_grade == docling_serve_types_pb2.QUALITY_GRADE_POOR
+
+
+class FailingTaskOrchestrator(FakeOrchestrator):
+    """Local-orchestrator style: failure lives on the task, no stored outcome."""
+
+    async def enqueue(self, **kwargs) -> Task:
+        task = await super().enqueue(**kwargs)
+        self.results.pop(task.task_id, None)
+        task.task_status = TaskStatus.FAILURE
+        task.error_message = "onnxruntime is not installed."
+        task.failure = PublicFailureInfo(
+            category=FailureCategory.BACKEND_FAILURE,
+            message="onnxruntime is not installed.",
+            retryable=False,
+            phase=FailurePhase.EXECUTION,
+        )
+        return task
+
+
+@pytest.mark.asyncio
+async def test_convert_source_sync_task_failure_uses_failure_arm():
+    """Sync convert on a failed task returns `failure`, not NOT_FOUND."""
+    async with _server_with(orchestrator=FailingTaskOrchestrator()) as stub:
+        response = await stub.ConvertSource(_file_convert_request())
+
+    assert response.WhichOneof("result") == "failure"
+    failure = response.failure.failure
+    assert failure.category == docling_serve_types_pb2.FAILURE_CATEGORY_BACKEND_FAILURE
+    assert failure.phase == docling_serve_types_pb2.FAILURE_PHASE_EXECUTION
+    assert failure.message == "onnxruntime is not installed."
 
 
 @pytest.mark.asyncio
@@ -345,6 +653,112 @@ async def test_poll_task_status(grpc_stub, orchestrator):
 
     assert response.response.task_status == docling_serve_types_pb2.TASK_STATUS_STARTED
     assert response.response.task_meta.num_docs == 1
+    assert response.response.task_type == docling_serve_types_pb2.TASK_TYPE_CONVERT
+    assert not response.response.HasField("task_type_raw")
+    assert not response.response.HasField("error_message")
+    assert not response.response.HasField("failure")
+
+
+@pytest.mark.asyncio
+async def test_poll_task_status_failure_fields(grpc_stub, orchestrator):
+    """Failed tasks surface error_message, typed failure and partial counters."""
+    task_id = "status-failed"
+    orchestrator.tasks[task_id] = Task(
+        task_id=task_id,
+        task_type=TaskType.CHUNK,
+        task_status=TaskStatus.FAILURE,
+        sources=[],
+        processing_meta=TaskProcessingMeta(
+            num_docs=4,
+            num_processed=4,
+            num_succeeded=1,
+            num_partially_succeeded=2,
+            num_failed=1,
+        ),
+        error_message="chunker exploded",
+        failure=_failure("chunker exploded"),
+    )
+
+    response = await grpc_stub.PollTaskStatus(
+        docling_serve_pb2.PollTaskStatusRequest(
+            request=docling_serve_types_pb2.TaskStatusPollRequest(task_id=task_id)
+        )
+    )
+
+    status = response.response
+    assert status.task_status == docling_serve_types_pb2.TASK_STATUS_FAILURE
+    assert status.task_type == docling_serve_types_pb2.TASK_TYPE_CHUNK
+    assert status.error_message == "chunker exploded"
+    assert status.task_meta.num_partially_succeeded == 2
+    assert status.HasField("failure")
+    assert (
+        status.failure.category
+        == docling_serve_types_pb2.FAILURE_CATEGORY_SOURCE_UNAVAILABLE
+    )
+    assert status.failure.message == "chunker exploded"
+
+
+@pytest.mark.asyncio
+async def test_get_chunk_result_metadata_is_typed_scalar_map(grpc_stub, orchestrator):
+    """Chunk.metadata is flattened into map<string, ScalarValue>, not stringified."""
+    task_id = "chunk-meta"
+    chunk = ChunkedDocumentResultItem(
+        filename="doc.md",
+        chunk_index=0,
+        text="chunk text",
+        doc_items=[],
+        metadata={
+            "origin": {
+                "filename": "doc.pdf",
+                "binary_hash": 2**63 + 17,
+                "mimetype": "application/pdf",
+            },
+            "is_table": False,
+            "score": 0.75,
+            "page": 2,
+        },
+    )
+    orchestrator.results[task_id] = DoclingTaskResult(
+        result=ChunkedDocumentResult(chunks=[chunk], documents=[]),
+        processing_time=0.2,
+        num_converted=1,
+        num_succeeded=1,
+        num_failed=0,
+    )
+
+    response = await grpc_stub.GetChunkResult(
+        docling_serve_pb2.GetChunkResultRequest(
+            request=docling_serve_types_pb2.TaskResultRequest(task_id=task_id)
+        )
+    )
+
+    assert response.WhichOneof("result") == "response"
+    [proto_chunk] = response.response.chunks
+    meta = proto_chunk.metadata
+    assert meta["origin.filename"].WhichOneof("kind") == "string_value"
+    assert meta["origin.filename"].string_value == "doc.pdf"
+    assert meta["origin.binary_hash"].WhichOneof("kind") == "uint_value"
+    assert meta["origin.binary_hash"].uint_value == 2**63 + 17
+    assert meta["is_table"].WhichOneof("kind") == "bool_value"
+    assert meta["is_table"].bool_value is False
+    assert meta["score"].WhichOneof("kind") == "double_value"
+    assert meta["score"].double_value == pytest.approx(0.75)
+    assert meta["page"].WhichOneof("kind") == "int_value"
+    assert meta["page"].int_value == 2
+
+
+@pytest.mark.asyncio
+async def test_get_chunk_result_failure_arm(grpc_stub, orchestrator):
+    orchestrator.failures["chunk-failed"] = StoredFailureOutcome(failure=_failure())
+
+    response = await grpc_stub.GetChunkResult(
+        docling_serve_pb2.GetChunkResultRequest(
+            request=docling_serve_types_pb2.TaskResultRequest(task_id="chunk-failed")
+        )
+    )
+
+    assert response.WhichOneof("result") == "failure"
+    assert response.failure.failure.message == "boom"
 
 
 @pytest.mark.asyncio
@@ -931,8 +1345,14 @@ async def test_explicit_json_export_matches_model_dump_json(grpc_stub):
 
 
 @asynccontextmanager
-async def _server_with(policy=None, orchestrator=None, interceptors=None):
-    """Spin up a gRPC server with a custom policy/orchestrator/interceptors."""
+async def _server_with(
+    policy=None, orchestrator=None, interceptors=None, streaming=False
+):
+    """Spin up a gRPC server with a custom policy/orchestrator/interceptors.
+
+    Yields the convert stub, or ``(convert_stub, streaming_stub)`` when
+    ``streaming`` is set.
+    """
     original_single_use = docling_serve_settings.single_use_results
     docling_serve_settings.single_use_results = False
     server = grpc.aio.server(interceptors=list(interceptors or []))
@@ -947,7 +1367,14 @@ async def _server_with(policy=None, orchestrator=None, interceptors=None):
     await server.start()
     try:
         async with grpc.aio.insecure_channel(f"localhost:{port}") as channel:
-            yield docling_serve_pb2_grpc.DoclingServeServiceStub(channel)
+            stub = docling_serve_pb2_grpc.DoclingServeServiceStub(channel)
+            if streaming:
+                yield (
+                    stub,
+                    docling_serve_stream_pb2_grpc.DoclingStreamingServiceStub(channel),
+                )
+            else:
+                yield stub
     finally:
         await service.close()
         docling_serve_settings.single_use_results = original_single_use
@@ -1023,6 +1450,7 @@ async def test_s3_source_rejected_when_disallowed():
             await stub.ConvertSource(request)
     assert exc_info.value.code() == grpc.StatusCode.INVALID_ARGUMENT
     assert "source kind 's3' is not allowed" in exc_info.value.details()
+
 
 @pytest.mark.asyncio
 async def test_policy_rejects_disallowed_target_type():
@@ -1168,3 +1596,230 @@ async def test_unhandled_error_detail_with_debug():
         assert "sensitive internal detail" in exc_info.value.details()
     finally:
         docling_serve_settings.debug_error_details = original
+
+
+class BackpressuredOrchestrator(FakeOrchestrator):
+    async def enqueue(self, **kwargs):
+        raise RedisBackpressureError("queue depth exceeded")
+
+
+@pytest.mark.asyncio
+async def test_backpressure_maps_to_resource_exhausted():
+    """RedisBackpressureError (REST 503) becomes RESOURCE_EXHAUSTED on gRPC."""
+    async with _server_with(
+        orchestrator=BackpressuredOrchestrator(),
+        interceptors=[PublicErrorInterceptor()],
+        streaming=True,
+    ) as (stub, streaming_stub):
+        with pytest.raises(grpc.aio.AioRpcError) as exc_info:
+            await stub.ConvertSource(_file_convert_request())
+        assert exc_info.value.code() == grpc.StatusCode.RESOURCE_EXHAUSTED
+        assert "queue depth exceeded" not in exc_info.value.details()
+
+        with pytest.raises(grpc.aio.AioRpcError) as exc_info:
+            async for _ in stub.WatchConvertSource(
+                docling_serve_pb2.WatchConvertSourceRequest(
+                    request=_dummy_convert_request()
+                )
+            ):
+                pass
+        assert exc_info.value.code() == grpc.StatusCode.RESOURCE_EXHAUSTED
+
+
+# ---------------------------------------------------------------------------
+# Callbacks (ConvertDocumentRequest.callbacks -> Task.callbacks)
+# ---------------------------------------------------------------------------
+
+
+def _callback_spec():
+    return docling_serve_types_pb2.CallbackSpec(
+        url="https://hooks.example.com/progress",
+        headers={"Authorization": "Bearer t0k3n"},
+        ca_cert="-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----",
+    )
+
+
+@pytest.mark.asyncio
+async def test_convert_source_forwards_typed_callbacks():
+    """CallbackSpec is mapped to the Pydantic model and passed to enqueue."""
+    policy = replace(
+        build_service_policy(docling_serve_settings), callbacks_enabled=True
+    )
+    orchestrator = FakeOrchestrator()
+    request = _file_convert_request()
+    request.request.callbacks.append(_callback_spec())
+
+    async with _server_with(policy=policy, orchestrator=orchestrator) as stub:
+        await stub.ConvertSource(request)
+
+    [call] = orchestrator.enqueue_kwargs
+    [spec] = call["callbacks"]
+    assert str(spec.url) == "https://hooks.example.com/progress"
+    assert spec.headers == {"Authorization": "Bearer t0k3n"}
+    assert spec.ca_cert.startswith("-----BEGIN CERTIFICATE-----")
+
+
+@pytest.mark.asyncio
+async def test_convert_source_callbacks_rejected_when_disabled():
+    policy = replace(
+        build_service_policy(docling_serve_settings), callbacks_enabled=False
+    )
+    request = _file_convert_request()
+    request.request.callbacks.append(_callback_spec())
+
+    async with _server_with(policy=policy) as stub:
+        with pytest.raises(grpc.aio.AioRpcError) as exc_info:
+            await stub.ConvertSource(request)
+    assert exc_info.value.code() == grpc.StatusCode.INVALID_ARGUMENT
+    assert "Callbacks are disabled" in exc_info.value.details()
+
+
+@pytest.mark.asyncio
+async def test_chunk_source_forwards_callbacks():
+    policy = replace(
+        build_service_policy(docling_serve_settings), callbacks_enabled=True
+    )
+    orchestrator = FakeOrchestrator()
+    request = docling_serve_pb2.ChunkHybridSourceAsyncRequest(
+        request=_dummy_hybrid_request()
+    )
+    request.request.callbacks.append(_callback_spec())
+
+    async with _server_with(policy=policy, orchestrator=orchestrator) as stub:
+        response = await stub.ChunkHybridSourceAsync(request)
+
+    assert response.response.task_type == docling_serve_types_pb2.TASK_TYPE_CHUNK
+    [call] = orchestrator.enqueue_kwargs
+    assert call["task_type"] == TaskType.CHUNK
+    assert len(call["callbacks"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# ConvertSourceBatch (mirrors POST /v1/convert/source/batch)
+# ---------------------------------------------------------------------------
+
+
+def _s3_target(bucket="out-bucket"):
+    return docling_serve_types_pb2.Target(
+        s3=docling_serve_types_pb2.S3Target(
+            endpoint="s3.example.com",
+            access_key="AKIA...",
+            secret_key="secret",
+            bucket=bucket,
+            key_prefix="results/",
+            verify_ssl=True,
+        )
+    )
+
+
+def _batch_request(**overrides):
+    fields = {
+        "sources": [
+            docling_serve_types_pb2.Source(
+                http=docling_serve_types_pb2.HttpSource(url="https://example.com/a.pdf")
+            ),
+            docling_serve_types_pb2.Source(
+                http=docling_serve_types_pb2.HttpSource(url="https://example.com/b.pdf")
+            ),
+        ],
+        "targets": [_s3_target("out-a"), _s3_target("out-b")],
+    }
+    fields.update(overrides)
+    return docling_serve_pb2.ConvertSourceBatchRequest(
+        request=docling_serve_types_pb2.BatchConvertDocumentRequest(**fields)
+    )
+
+
+@pytest.mark.asyncio
+async def test_convert_source_batch_enqueues_targets_and_callbacks():
+    policy = replace(
+        build_service_policy(docling_serve_settings), callbacks_enabled=True
+    )
+    orchestrator = FakeOrchestrator()
+    request = _batch_request(callbacks=[_callback_spec()])
+    request.request.options.to_formats.append(
+        docling_serve_types_pb2.OUTPUT_FORMAT_MARKDOWN
+    )
+
+    async with _server_with(policy=policy, orchestrator=orchestrator) as stub:
+        response = await stub.ConvertSourceBatch(request)
+
+    status = response.response
+    assert status.task_type == docling_serve_types_pb2.TASK_TYPE_CONVERT
+    assert status.task_status == docling_serve_types_pb2.TASK_STATUS_SUCCESS
+    assert status.task_id in orchestrator.tasks
+
+    [call] = orchestrator.enqueue_kwargs
+    assert call["task_type"] == TaskType.CONVERT
+    assert len(call["sources"]) == 2
+    assert [t.kind for t in call["targets"]] == ["s3", "s3"]
+    assert [t.bucket for t in call["targets"]] == ["out-a", "out-b"]
+    assert call["target"] is None
+    assert len(call["callbacks"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_convert_source_batch_generic_target_round_trips_attributes():
+    """GenericTarget mirrors GenericTargetRequest (kind + typed attribute bag)."""
+    policy = build_service_policy(docling_serve_settings)
+    orchestrator = FakeOrchestrator()
+    generic = docling_serve_types_pb2.Target(
+        generic=docling_serve_types_pb2.GenericTarget(
+            kind="s3",
+            attributes={
+                "endpoint": docling_serve_types_pb2.ScalarValue(
+                    string_value="s3.example.com"
+                ),
+                "access_key": docling_serve_types_pb2.ScalarValue(string_value="AKIA"),
+                "secret_key": docling_serve_types_pb2.ScalarValue(string_value="sec"),
+                "bucket": docling_serve_types_pb2.ScalarValue(string_value="generic"),
+                "verify_ssl": docling_serve_types_pb2.ScalarValue(bool_value=False),
+            },
+        )
+    )
+    request = _batch_request(targets=[generic])
+
+    async with _server_with(policy=policy, orchestrator=orchestrator) as stub:
+        await stub.ConvertSourceBatch(request)
+
+    [call] = orchestrator.enqueue_kwargs
+    [target] = call["targets"]
+    assert target.kind == "s3"
+    assert target.bucket == "generic"
+    assert target.verify_ssl is False
+
+
+@pytest.mark.asyncio
+async def test_convert_source_batch_requires_target():
+    policy = build_service_policy(docling_serve_settings)
+    async with _server_with(policy=policy) as stub:
+        with pytest.raises(grpc.aio.AioRpcError) as exc_info:
+            await stub.ConvertSourceBatch(_batch_request(targets=[]))
+    assert exc_info.value.code() == grpc.StatusCode.INVALID_ARGUMENT
+
+
+@pytest.mark.asyncio
+async def test_convert_source_batch_rejects_inline_file_source():
+    """Batch is storage-to-storage: inline file sources fail like REST 422."""
+    policy = build_service_policy(docling_serve_settings)
+    inline = docling_serve_types_pb2.Source(
+        file=docling_serve_types_pb2.FileSource(
+            base64_string=base64.b64encode(b"dummy").decode(), filename="x.pdf"
+        )
+    )
+    async with _server_with(policy=policy) as stub:
+        with pytest.raises(grpc.aio.AioRpcError) as exc_info:
+            await stub.ConvertSourceBatch(_batch_request(sources=[inline]))
+    assert exc_info.value.code() == grpc.StatusCode.INVALID_ARGUMENT
+
+
+@pytest.mark.asyncio
+async def test_convert_source_batch_honours_max_sources():
+    policy = replace(
+        build_service_policy(docling_serve_settings), max_sources_per_request=1
+    )
+    async with _server_with(policy=policy) as stub:
+        with pytest.raises(grpc.aio.AioRpcError) as exc_info:
+            await stub.ConvertSourceBatch(_batch_request())
+    assert exc_info.value.code() == grpc.StatusCode.INVALID_ARGUMENT
+    assert "Too many sources" in exc_info.value.details()

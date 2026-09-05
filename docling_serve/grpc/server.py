@@ -4,15 +4,32 @@ import asyncio
 import importlib.metadata
 import logging
 from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
 from typing import Optional
 
 import grpc
+from fastapi import HTTPException
 
 from docling.datamodel.base_models import OutputFormat
+from docling.datamodel.service.responses import (
+    FailureCategory,
+    FailurePhase,
+    PublicFailureInfo,
+)
+from docling_jobkit.connectors.errors import (
+    SourceConnectorConfigError,
+    TargetConnectorConfigError,
+)
 from docling_jobkit.datamodel.chunking import ChunkingExportOptions
-from docling_jobkit.datamodel.task_meta import TaskType
+from docling_jobkit.datamodel.result import DoclingTaskResult
+from docling_jobkit.datamodel.stored_outcome import (
+    StoredFailureOutcome,
+    StoredSuccessOutcome,
+)
+from docling_jobkit.datamodel.task_meta import TaskStatus, TaskType
 from docling_jobkit.orchestrators.base_orchestrator import (
     BaseOrchestrator,
+    RedisBackpressureError,
     TaskNotFoundError,
 )
 
@@ -20,7 +37,9 @@ from docling_serve.orchestrator_factory import get_async_orchestrator
 from docling_serve.policy import (
     ServicePolicy,
     build_service_policy,
+    normalize_request,
     resolve_default_target,
+    validate_batch_convert_request,
 )
 from docling_serve.public_errors import build_public_http_detail
 from docling_serve.settings import docling_serve_settings
@@ -31,11 +50,15 @@ from .gen.ai.docling.serve.v1 import (
     docling_serve_types_pb2,
 )
 from .mapping import (
-    chunk_result_to_proto,
+    UnexpectedResultType,
     clear_response_to_proto,
-    convert_result_to_proto,
     requested_output_formats,
+    set_chunk_result,
+    set_convert_result,
+    task_failure_to_proto,
     task_status_to_proto,
+    to_batch_convert_request,
+    to_callbacks,
     to_convert_options,
     to_hierarchical_chunk_options,
     to_hybrid_chunk_options,
@@ -46,6 +69,29 @@ from .mapping import (
 from .policy_enforcement import normalize_options, validate_request
 
 _log = logging.getLogger(__name__)
+
+# REST maps queue backpressure to 503 + Retry-After; the gRPC equivalent for
+# "capacity exhausted, retry shortly" is RESOURCE_EXHAUSTED.
+_BACKPRESSURE_MESSAGE = "Server is busy, please try again shortly."
+
+
+class RequestRejected(ValueError):
+    """A request failed parsing or policy; the message is client-safe."""
+
+
+@dataclass
+class _PreparedRequest:
+    """Validated, policy-normalized parts of a convert or chunk request."""
+
+    sources: list
+    options: object
+    target: object
+    callbacks: list
+    requested_formats: set[OutputFormat]
+    chunking_options: object = None
+    chunking_export_options: ChunkingExportOptions = field(
+        default_factory=ChunkingExportOptions
+    )
 
 
 class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer):
@@ -96,24 +142,20 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
     ) -> None:
         await context.abort(code, message)
 
-    async def _parse_sources(self, request_sources, context: grpc.aio.ServicerContext):
-        """Parse proto sources, aborting with INVALID_ARGUMENT on bad input."""
+    @staticmethod
+    def _parse_sources(request_sources) -> list:
+        """Parse proto sources; RequestRejected on bad or empty input."""
         try:
             sources = to_task_sources(request_sources)
         except ValueError as exc:
-            await self._abort(context, grpc.StatusCode.INVALID_ARGUMENT, str(exc))
-            return None
+            raise RequestRejected(str(exc)) from exc
         if not sources:
-            await self._abort(
-                context,
-                grpc.StatusCode.INVALID_ARGUMENT,
-                "At least one source is required.",
-            )
-            return None
+            raise RequestRejected("At least one source is required.")
         return sources
 
-    async def _parse_options(self, proto_options, context: grpc.aio.ServicerContext):
-        """Map proto convert options, aborting with INVALID_ARGUMENT on bad input.
+    @staticmethod
+    def _parse_options(proto_options):
+        """Map proto convert options; RequestRejected on bad input.
 
         Covers both explicit mapping rejections (a pipeline tag the installed
         engine lacks) and Pydantic validation errors from the options model.
@@ -121,34 +163,135 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
         try:
             return to_convert_options(proto_options)
         except ValueError as exc:
-            await self._abort(context, grpc.StatusCode.INVALID_ARGUMENT, str(exc))
-            return None
+            raise RequestRejected(str(exc)) from exc
 
     def _parse_target(self, request_body):
         if request_body.HasField("target"):
             return to_task_target(request_body.target)
         return resolve_default_target(self._policy)
 
-    async def _enforce_policy(
+    @staticmethod
+    def _parse_callbacks(proto_callbacks) -> list:
+        """Map CallbackSpec entries; RequestRejected on bad input."""
+        try:
+            return to_callbacks(proto_callbacks)
+        except ValueError as exc:
+            raise RequestRejected(str(exc)) from exc
+
+    def _enforce_policy(
         self,
-        context: grpc.aio.ServicerContext,
         sources: list,
         options,
         target,
         *,
         chunk: bool = False,
+        callbacks: Optional[list] = None,
     ):
         """Normalize options and enforce the service policy (same rules as REST).
 
-        Returns the normalized options, or None after aborting the RPC with
-        INVALID_ARGUMENT when the request violates policy.
+        Returns the normalized options; RequestRejected when the request
+        violates policy.
         """
         options = normalize_options(options, self._policy)
-        detail = validate_request(sources, options, target, self._policy, chunk=chunk)
+        detail = validate_request(
+            sources, options, target, self._policy, chunk=chunk, callbacks=callbacks
+        )
         if detail is not None:
-            await self._abort(context, grpc.StatusCode.INVALID_ARGUMENT, detail)
-            return None
+            raise RequestRejected(detail)
         return options
+
+    def build_convert(
+        self, body: docling_serve_types_pb2.ConvertDocumentRequest
+    ) -> _PreparedRequest:
+        """Validate a convert body into enqueue parts; RequestRejected on error."""
+        options_proto = body.options if body.HasField("options") else None
+        requested_formats = requested_output_formats(options_proto)
+        sources = self._parse_sources(body.sources)
+        options = self._parse_options(options_proto)
+        callbacks = self._parse_callbacks(body.callbacks)
+        self._ensure_doc_format(options, requested_formats)
+        target = self._parse_target(body)
+        options = self._enforce_policy(sources, options, target, callbacks=callbacks)
+        return _PreparedRequest(
+            sources=sources,
+            options=options,
+            target=target,
+            callbacks=callbacks,
+            requested_formats=requested_formats,
+        )
+
+    def build_chunk(self, body, *, hybrid: bool) -> _PreparedRequest:
+        """Validate a chunk body into enqueue parts; RequestRejected on error."""
+        options_proto = (
+            body.convert_options if body.HasField("convert_options") else None
+        )
+        requested_formats = requested_output_formats(options_proto)
+        sources = self._parse_sources(body.sources)
+        options = self._parse_options(options_proto)
+        callbacks = self._parse_callbacks(body.callbacks)
+        self._ensure_doc_format(options, requested_formats)
+        target = self._parse_target(body)
+        chunking_proto = (
+            body.chunking_options if body.HasField("chunking_options") else None
+        )
+        chunking_options = (
+            to_hybrid_chunk_options(chunking_proto)
+            if hybrid
+            else to_hierarchical_chunk_options(chunking_proto)
+        )
+        export_options = ChunkingExportOptions(
+            include_converted_doc=body.include_converted_doc
+        )
+        options = self._enforce_policy(
+            sources, options, target, chunk=True, callbacks=callbacks
+        )
+        return _PreparedRequest(
+            sources=sources,
+            options=options,
+            target=target,
+            callbacks=callbacks,
+            requested_formats=requested_formats,
+            chunking_options=chunking_options,
+            chunking_export_options=export_options,
+        )
+
+    async def _prepare_convert(
+        self,
+        body: docling_serve_types_pb2.ConvertDocumentRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> Optional[_PreparedRequest]:
+        try:
+            return self.build_convert(body)
+        except RequestRejected as exc:
+            await self._abort(context, grpc.StatusCode.INVALID_ARGUMENT, str(exc))
+            return None
+
+    async def _prepare_chunk(
+        self,
+        body,
+        context: grpc.aio.ServicerContext,
+        *,
+        hybrid: bool,
+    ) -> Optional[_PreparedRequest]:
+        try:
+            return self.build_chunk(body, hybrid=hybrid)
+        except RequestRejected as exc:
+            await self._abort(context, grpc.StatusCode.INVALID_ARGUMENT, str(exc))
+            return None
+
+    async def _enqueue(self, prepared: _PreparedRequest, task_type: TaskType):
+        kwargs: dict = {
+            "task_type": task_type,
+            "sources": prepared.sources,
+            "convert_options": prepared.options,
+            "target": prepared.target,
+        }
+        if prepared.callbacks:
+            kwargs["callbacks"] = prepared.callbacks
+        if task_type == TaskType.CHUNK:
+            kwargs["chunking_options"] = prepared.chunking_options
+            kwargs["chunking_export_options"] = prepared.chunking_export_options
+        return await self._orchestrator.enqueue(**kwargs)
 
     async def _wait_task_complete(self, task_id: str) -> bool:
         start = asyncio.get_running_loop().time()
@@ -198,6 +341,115 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
         elif OutputFormat.JSON not in options.to_formats:
             options.to_formats.append(OutputFormat.JSON)
 
+    async def _task_outcome(
+        self, task_id: str, context: grpc.aio.ServicerContext
+    ) -> Optional[DoclingTaskResult | StoredFailureOutcome]:
+        """Fetch a finished task's outcome (success result or task-scope failure).
+
+        Mirrors GET /v1/result: ``task_outcome`` may return a stored outcome
+        envelope or a bare DoclingTaskResult depending on the orchestrator.
+        Orchestrators that do not persist failure outcomes still record the
+        task-scope ``PublicFailureInfo`` on the task itself; that is surfaced
+        as the ``failure`` arm so callers never get NOT_FOUND for a task that
+        has actually finished. Aborts NOT_FOUND when nothing is stored yet.
+        """
+        outcome = await self._orchestrator.task_outcome(task_id=task_id)
+        if outcome is None:
+            outcome = await self._failure_from_task_status(task_id)
+        if outcome is None:
+            await self._abort(
+                context, grpc.StatusCode.NOT_FOUND, "Task result not found."
+            )
+            return None
+        if isinstance(outcome, StoredSuccessOutcome):
+            return outcome.result
+        return outcome
+
+    async def _failure_from_task_status(
+        self, task_id: str
+    ) -> Optional[StoredFailureOutcome]:
+        try:
+            task = await self._orchestrator.task_status(task_id=task_id)
+        except TaskNotFoundError:
+            return None
+        if task.task_status != TaskStatus.FAILURE:
+            return None
+        failure = task.failure
+        if failure is None:
+            failure = PublicFailureInfo(
+                category=FailureCategory.UNKNOWN,
+                message=task.error_message or "Task failed.",
+                retryable=False,
+                phase=FailurePhase.UNKNOWN,
+            )
+        return StoredFailureOutcome(failure=failure)
+
+    async def _fill_convert_result(
+        self,
+        message,
+        outcome: DoclingTaskResult | StoredFailureOutcome,
+        requested_formats: set[OutputFormat],
+        context: grpc.aio.ServicerContext,
+    ) -> bool:
+        """Populate the convert result oneof; False after aborting on a bad arm."""
+        if isinstance(outcome, StoredFailureOutcome):
+            message.failure.CopyFrom(task_failure_to_proto(outcome.failure))
+            return True
+        try:
+            set_convert_result(message, outcome, requested_formats)
+        except UnexpectedResultType as exc:
+            await self._abort(context, grpc.StatusCode.FAILED_PRECONDITION, str(exc))
+            return False
+        return True
+
+    async def _fill_chunk_result(
+        self,
+        message,
+        outcome: DoclingTaskResult | StoredFailureOutcome,
+        requested_formats: set[OutputFormat],
+        context: grpc.aio.ServicerContext,
+    ) -> bool:
+        """Populate the chunk result oneof; False after aborting on a bad arm."""
+        if isinstance(outcome, StoredFailureOutcome):
+            message.failure.CopyFrom(task_failure_to_proto(outcome.failure))
+            return True
+        try:
+            set_chunk_result(message, outcome, requested_formats)
+        except UnexpectedResultType as exc:
+            await self._abort(context, grpc.StatusCode.FAILED_PRECONDITION, str(exc))
+            return False
+        return True
+
+    async def _run_sync(
+        self,
+        prepared: _PreparedRequest,
+        task_type: TaskType,
+        context: grpc.aio.ServicerContext,
+        timeout_message: str,
+    ):
+        """Enqueue, wait, and return (task_id, outcome); None after aborting."""
+        task = await self._enqueue(prepared, task_type)
+        completed = await self._wait_task_complete(task.task_id)
+        if not completed:
+            await self._abort(
+                context, grpc.StatusCode.DEADLINE_EXCEEDED, timeout_message
+            )
+            return None
+        outcome = await self._task_outcome(task.task_id, context)
+        if outcome is None:
+            return None
+        return task.task_id, outcome
+
+    async def _submit_async(
+        self,
+        prepared: _PreparedRequest,
+        task_type: TaskType,
+    ) -> docling_serve_types_pb2.TaskStatusPollResponse:
+        task = await self._enqueue(prepared, task_type)
+        position = await self._orchestrator.get_queue_position(task_id=task.task_id)
+        self._requested_formats[task.task_id] = prepared.requested_formats
+        return task_status_to_proto(task, position)
+
     # -------------------- RPCs --------------------
 
     async def Health(
@@ -220,63 +472,25 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
         await self._check_api_key(context)
         await self._ensure_queue_started()
 
-        requested_formats = requested_output_formats(
-            request.request.options if request.request.HasField("options") else None
-        )
-        sources = await self._parse_sources(request.request.sources, context)
-        if sources is None:
-            return docling_serve_pb2.ConvertSourceResponse()
-        options = await self._parse_options(
-            request.request.options if request.request.HasField("options") else None,
+        response = docling_serve_pb2.ConvertSourceResponse()
+        prepared = await self._prepare_convert(request.request, context)
+        if prepared is None:
+            return response
+        run = await self._run_sync(
+            prepared,
+            TaskType.CONVERT,
             context,
+            "Conversion is taking too long. Increase DOCLING_SERVE_MAX_SYNC_WAIT.",
         )
-        if options is None:
-            return docling_serve_pb2.ConvertSourceResponse()
-        self._ensure_doc_format(options, requested_formats)
-        target = self._parse_target(request.request)
-        options = await self._enforce_policy(context, sources, options, target)
-        if options is None:
-            return docling_serve_pb2.ConvertSourceResponse()
-
-        task = await self._orchestrator.enqueue(
-            task_type=TaskType.CONVERT,
-            sources=sources,
-            convert_options=options,
-            target=target,
-        )
-
-        completed = await self._wait_task_complete(task.task_id)
-        if not completed:
-            await self._abort(
-                context,
-                grpc.StatusCode.DEADLINE_EXCEEDED,
-                "Conversion is taking too long. Increase DOCLING_SERVE_MAX_SYNC_WAIT.",
-            )
-            return docling_serve_pb2.ConvertSourceResponse()
-
-        task_result = await self._orchestrator.task_result(task_id=task.task_id)
-        if task_result is None:
-            await self._abort(
-                context, grpc.StatusCode.NOT_FOUND, "Task result not found."
-            )
-            return docling_serve_pb2.ConvertSourceResponse()
-
-        if not hasattr(task_result.result, "content"):
-            await self._abort(
-                context,
-                grpc.StatusCode.INVALID_ARGUMENT,
-                "Conversion result is not an in-body document.",
-            )
-            return docling_serve_pb2.ConvertSourceResponse()
-
-        response = convert_result_to_proto(
-            task_result.result,
-            task_result.processing_time,
-            requested_formats=requested_formats,
-        )
-        with_single_use_cleanup(self._orchestrator, task.task_id)
-
-        return docling_serve_pb2.ConvertSourceResponse(response=response)
+        if run is None:
+            return response
+        task_id, outcome = run
+        if not await self._fill_convert_result(
+            response, outcome, prepared.requested_formats, context
+        ):
+            return response
+        with_single_use_cleanup(self._orchestrator, task_id)
+        return response
 
     async def ConvertSourceAsync(
         self,
@@ -286,34 +500,78 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
         await self._check_api_key(context)
         await self._ensure_queue_started()
 
-        requested_formats = requested_output_formats(
-            request.request.options if request.request.HasField("options") else None
-        )
-        sources = await self._parse_sources(request.request.sources, context)
-        if sources is None:
+        prepared = await self._prepare_convert(request.request, context)
+        if prepared is None:
             return docling_serve_pb2.ConvertSourceAsyncResponse()
-        options = await self._parse_options(
-            request.request.options if request.request.HasField("options") else None,
-            context,
-        )
-        if options is None:
-            return docling_serve_pb2.ConvertSourceAsyncResponse()
-        self._ensure_doc_format(options, requested_formats)
-        target = self._parse_target(request.request)
-        options = await self._enforce_policy(context, sources, options, target)
-        if options is None:
-            return docling_serve_pb2.ConvertSourceAsyncResponse()
+        status = await self._submit_async(prepared, TaskType.CONVERT)
+        return docling_serve_pb2.ConvertSourceAsyncResponse(response=status)
+
+    async def ConvertSourceBatch(
+        self,
+        request: docling_serve_pb2.ConvertSourceBatchRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> docling_serve_pb2.ConvertSourceBatchResponse:
+        """Mirror POST /v1/convert/source/batch.
+
+        Batch goes through the REST Pydantic request model and the same policy
+        helpers (``normalize_request`` + ``validate_batch_convert_request``), then
+        the registry-normalized enqueue the REST handler performs.
+        """
+        await self._check_api_key(context)
+        await self._ensure_queue_started()
+
+        empty = docling_serve_pb2.ConvertSourceBatchResponse()
+        try:
+            batch = to_batch_convert_request(request.request)
+        except ValueError as exc:
+            await self._abort(context, grpc.StatusCode.INVALID_ARGUMENT, str(exc))
+            return empty
+
+        try:
+            batch = normalize_request(batch, self._policy)
+            validate_batch_convert_request(batch, self._policy)
+        except HTTPException as exc:
+            await self._abort(
+                context, grpc.StatusCode.INVALID_ARGUMENT, str(exc.detail)
+            )
+            return empty
+
+        try:
+            sources = [
+                self._policy.source_factory.validate_config(source)
+                for source in batch.sources
+            ]
+            raw_targets = batch.targets or (
+                [batch.target] if batch.target is not None else []
+            )
+            targets = [
+                self._policy.target_factory.validate_config(t) for t in raw_targets
+            ]
+        except (SourceConnectorConfigError, TargetConnectorConfigError) as exc:
+            await self._abort(context, grpc.StatusCode.INVALID_ARGUMENT, str(exc))
+            return empty
+        if not targets:
+            await self._abort(
+                context,
+                grpc.StatusCode.INVALID_ARGUMENT,
+                "Batch requests require a target or a non-empty targets list.",
+            )
+            return empty
 
         task = await self._orchestrator.enqueue(
             task_type=TaskType.CONVERT,
             sources=sources,
-            convert_options=options,
-            target=target,
+            convert_options=batch.options,
+            targets=targets,
+            callbacks=batch.callbacks,
         )
         position = await self._orchestrator.get_queue_position(task_id=task.task_id)
-        self._requested_formats[task.task_id] = requested_formats
-        response = task_status_to_proto(task, position)
-        return docling_serve_pb2.ConvertSourceAsyncResponse(response=response)
+        self._requested_formats[task.task_id] = requested_output_formats(
+            request.request.options if request.request.HasField("options") else None
+        )
+        return docling_serve_pb2.ConvertSourceBatchResponse(
+            response=task_status_to_proto(task, position)
+        )
 
     async def ChunkHierarchicalSource(
         self,
@@ -323,80 +581,25 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
         await self._check_api_key(context)
         await self._ensure_queue_started()
 
-        requested_formats = requested_output_formats(
-            request.request.convert_options
-            if request.request.HasField("convert_options")
-            else None
-        )
-        sources = await self._parse_sources(request.request.sources, context)
-        if sources is None:
-            return docling_serve_pb2.ChunkHierarchicalSourceResponse()
-        options = await self._parse_options(
-            request.request.convert_options
-            if request.request.HasField("convert_options")
-            else None,
+        response = docling_serve_pb2.ChunkHierarchicalSourceResponse()
+        prepared = await self._prepare_chunk(request.request, context, hybrid=False)
+        if prepared is None:
+            return response
+        run = await self._run_sync(
+            prepared,
+            TaskType.CHUNK,
             context,
+            "Chunking is taking too long. Increase DOCLING_SERVE_MAX_SYNC_WAIT.",
         )
-        if options is None:
-            return docling_serve_pb2.ChunkHierarchicalSourceResponse()
-        self._ensure_doc_format(options, requested_formats)
-        target = self._parse_target(request.request)
-        chunking_options = to_hierarchical_chunk_options(
-            request.request.chunking_options
-            if request.request.HasField("chunking_options")
-            else None
-        )
-
-        export_options = ChunkingExportOptions(
-            include_converted_doc=request.request.include_converted_doc
-        )
-        options = await self._enforce_policy(
-            context, sources, options, target, chunk=True
-        )
-        if options is None:
-            return docling_serve_pb2.ChunkHierarchicalSourceResponse()
-
-        task = await self._orchestrator.enqueue(
-            task_type=TaskType.CHUNK,
-            sources=sources,
-            convert_options=options,
-            chunking_options=chunking_options,
-            chunking_export_options=export_options,
-            target=target,
-        )
-
-        completed = await self._wait_task_complete(task.task_id)
-        if not completed:
-            await self._abort(
-                context,
-                grpc.StatusCode.DEADLINE_EXCEEDED,
-                "Chunking is taking too long. Increase DOCLING_SERVE_MAX_SYNC_WAIT.",
-            )
-            return docling_serve_pb2.ChunkHierarchicalSourceResponse()
-
-        task_result = await self._orchestrator.task_result(task_id=task.task_id)
-        if task_result is None:
-            await self._abort(
-                context, grpc.StatusCode.NOT_FOUND, "Task result not found."
-            )
-            return docling_serve_pb2.ChunkHierarchicalSourceResponse()
-
-        if not hasattr(task_result.result, "chunks"):
-            await self._abort(
-                context,
-                grpc.StatusCode.INVALID_ARGUMENT,
-                "Chunking result is not an in-body response.",
-            )
-            return docling_serve_pb2.ChunkHierarchicalSourceResponse()
-
-        response = chunk_result_to_proto(
-            task_result.result,
-            task_result.processing_time,
-            requested_formats=requested_formats,
-        )
-        with_single_use_cleanup(self._orchestrator, task.task_id)
-
-        return docling_serve_pb2.ChunkHierarchicalSourceResponse(response=response)
+        if run is None:
+            return response
+        task_id, outcome = run
+        if not await self._fill_chunk_result(
+            response, outcome, prepared.requested_formats, context
+        ):
+            return response
+        with_single_use_cleanup(self._orchestrator, task_id)
+        return response
 
     async def ChunkHybridSource(
         self,
@@ -406,80 +609,25 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
         await self._check_api_key(context)
         await self._ensure_queue_started()
 
-        requested_formats = requested_output_formats(
-            request.request.convert_options
-            if request.request.HasField("convert_options")
-            else None
-        )
-        sources = await self._parse_sources(request.request.sources, context)
-        if sources is None:
-            return docling_serve_pb2.ChunkHybridSourceResponse()
-        options = await self._parse_options(
-            request.request.convert_options
-            if request.request.HasField("convert_options")
-            else None,
+        response = docling_serve_pb2.ChunkHybridSourceResponse()
+        prepared = await self._prepare_chunk(request.request, context, hybrid=True)
+        if prepared is None:
+            return response
+        run = await self._run_sync(
+            prepared,
+            TaskType.CHUNK,
             context,
+            "Chunking is taking too long. Increase DOCLING_SERVE_MAX_SYNC_WAIT.",
         )
-        if options is None:
-            return docling_serve_pb2.ChunkHybridSourceResponse()
-        self._ensure_doc_format(options, requested_formats)
-        target = self._parse_target(request.request)
-        chunking_options = to_hybrid_chunk_options(
-            request.request.chunking_options
-            if request.request.HasField("chunking_options")
-            else None
-        )
-
-        export_options = ChunkingExportOptions(
-            include_converted_doc=request.request.include_converted_doc
-        )
-        options = await self._enforce_policy(
-            context, sources, options, target, chunk=True
-        )
-        if options is None:
-            return docling_serve_pb2.ChunkHybridSourceResponse()
-
-        task = await self._orchestrator.enqueue(
-            task_type=TaskType.CHUNK,
-            sources=sources,
-            convert_options=options,
-            chunking_options=chunking_options,
-            chunking_export_options=export_options,
-            target=target,
-        )
-
-        completed = await self._wait_task_complete(task.task_id)
-        if not completed:
-            await self._abort(
-                context,
-                grpc.StatusCode.DEADLINE_EXCEEDED,
-                "Chunking is taking too long. Increase DOCLING_SERVE_MAX_SYNC_WAIT.",
-            )
-            return docling_serve_pb2.ChunkHybridSourceResponse()
-
-        task_result = await self._orchestrator.task_result(task_id=task.task_id)
-        if task_result is None:
-            await self._abort(
-                context, grpc.StatusCode.NOT_FOUND, "Task result not found."
-            )
-            return docling_serve_pb2.ChunkHybridSourceResponse()
-
-        if not hasattr(task_result.result, "chunks"):
-            await self._abort(
-                context,
-                grpc.StatusCode.INVALID_ARGUMENT,
-                "Chunking result is not an in-body response.",
-            )
-            return docling_serve_pb2.ChunkHybridSourceResponse()
-
-        response = chunk_result_to_proto(
-            task_result.result,
-            task_result.processing_time,
-            requested_formats=requested_formats,
-        )
-        with_single_use_cleanup(self._orchestrator, task.task_id)
-
-        return docling_serve_pb2.ChunkHybridSourceResponse(response=response)
+        if run is None:
+            return response
+        task_id, outcome = run
+        if not await self._fill_chunk_result(
+            response, outcome, prepared.requested_formats, context
+        ):
+            return response
+        with_single_use_cleanup(self._orchestrator, task_id)
+        return response
 
     async def ChunkHierarchicalSourceAsync(
         self,
@@ -489,51 +637,11 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
         await self._check_api_key(context)
         await self._ensure_queue_started()
 
-        requested_formats = requested_output_formats(
-            request.request.convert_options
-            if request.request.HasField("convert_options")
-            else None
-        )
-        sources = await self._parse_sources(request.request.sources, context)
-        if sources is None:
+        prepared = await self._prepare_chunk(request.request, context, hybrid=False)
+        if prepared is None:
             return docling_serve_pb2.ChunkHierarchicalSourceAsyncResponse()
-        options = await self._parse_options(
-            request.request.convert_options
-            if request.request.HasField("convert_options")
-            else None,
-            context,
-        )
-        if options is None:
-            return docling_serve_pb2.ChunkHierarchicalSourceAsyncResponse()
-        self._ensure_doc_format(options, requested_formats)
-        target = self._parse_target(request.request)
-        chunking_options = to_hierarchical_chunk_options(
-            request.request.chunking_options
-            if request.request.HasField("chunking_options")
-            else None
-        )
-
-        export_options = ChunkingExportOptions(
-            include_converted_doc=request.request.include_converted_doc
-        )
-        options = await self._enforce_policy(
-            context, sources, options, target, chunk=True
-        )
-        if options is None:
-            return docling_serve_pb2.ChunkHierarchicalSourceAsyncResponse()
-
-        task = await self._orchestrator.enqueue(
-            task_type=TaskType.CHUNK,
-            sources=sources,
-            convert_options=options,
-            chunking_options=chunking_options,
-            chunking_export_options=export_options,
-            target=target,
-        )
-        position = await self._orchestrator.get_queue_position(task_id=task.task_id)
-        self._requested_formats[task.task_id] = requested_formats
-        response = task_status_to_proto(task, position)
-        return docling_serve_pb2.ChunkHierarchicalSourceAsyncResponse(response=response)
+        status = await self._submit_async(prepared, TaskType.CHUNK)
+        return docling_serve_pb2.ChunkHierarchicalSourceAsyncResponse(response=status)
 
     async def ChunkHybridSourceAsync(
         self,
@@ -543,51 +651,11 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
         await self._check_api_key(context)
         await self._ensure_queue_started()
 
-        requested_formats = requested_output_formats(
-            request.request.convert_options
-            if request.request.HasField("convert_options")
-            else None
-        )
-        sources = await self._parse_sources(request.request.sources, context)
-        if sources is None:
+        prepared = await self._prepare_chunk(request.request, context, hybrid=True)
+        if prepared is None:
             return docling_serve_pb2.ChunkHybridSourceAsyncResponse()
-        options = await self._parse_options(
-            request.request.convert_options
-            if request.request.HasField("convert_options")
-            else None,
-            context,
-        )
-        if options is None:
-            return docling_serve_pb2.ChunkHybridSourceAsyncResponse()
-        self._ensure_doc_format(options, requested_formats)
-        target = self._parse_target(request.request)
-        chunking_options = to_hybrid_chunk_options(
-            request.request.chunking_options
-            if request.request.HasField("chunking_options")
-            else None
-        )
-
-        export_options = ChunkingExportOptions(
-            include_converted_doc=request.request.include_converted_doc
-        )
-        options = await self._enforce_policy(
-            context, sources, options, target, chunk=True
-        )
-        if options is None:
-            return docling_serve_pb2.ChunkHybridSourceAsyncResponse()
-
-        task = await self._orchestrator.enqueue(
-            task_type=TaskType.CHUNK,
-            sources=sources,
-            convert_options=options,
-            chunking_options=chunking_options,
-            chunking_export_options=export_options,
-            target=target,
-        )
-        position = await self._orchestrator.get_queue_position(task_id=task.task_id)
-        self._requested_formats[task.task_id] = requested_formats
-        response = task_status_to_proto(task, position)
-        return docling_serve_pb2.ChunkHybridSourceAsyncResponse(response=response)
+        status = await self._submit_async(prepared, TaskType.CHUNK)
+        return docling_serve_pb2.ChunkHybridSourceAsyncResponse(response=status)
 
     async def PollTaskStatus(
         self,
@@ -618,31 +686,18 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
     ) -> docling_serve_pb2.GetConvertResultResponse:
         await self._check_api_key(context)
 
-        task_result = await self._orchestrator.task_result(
-            task_id=request.request.task_id
-        )
-        if task_result is None:
-            await self._abort(
-                context, grpc.StatusCode.NOT_FOUND, "Task result not found."
-            )
-            return docling_serve_pb2.GetConvertResultResponse()
-
-        if not hasattr(task_result.result, "content"):
-            await self._abort(
-                context,
-                grpc.StatusCode.INVALID_ARGUMENT,
-                "Conversion result is not an in-body document.",
-            )
-            return docling_serve_pb2.GetConvertResultResponse()
-
-        requested_formats = self._requested_formats.pop(request.request.task_id, set())
-        response = convert_result_to_proto(
-            task_result.result,
-            task_result.processing_time,
-            requested_formats=requested_formats,
-        )
-        with_single_use_cleanup(self._orchestrator, request.request.task_id)
-        return docling_serve_pb2.GetConvertResultResponse(response=response)
+        response = docling_serve_pb2.GetConvertResultResponse()
+        task_id = request.request.task_id
+        outcome = await self._task_outcome(task_id, context)
+        if outcome is None:
+            return response
+        requested_formats = self._requested_formats.pop(task_id, set())
+        if not await self._fill_convert_result(
+            response, outcome, requested_formats, context
+        ):
+            return response
+        with_single_use_cleanup(self._orchestrator, task_id)
+        return response
 
     async def GetChunkResult(
         self,
@@ -651,31 +706,18 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
     ) -> docling_serve_pb2.GetChunkResultResponse:
         await self._check_api_key(context)
 
-        task_result = await self._orchestrator.task_result(
-            task_id=request.request.task_id
-        )
-        if task_result is None:
-            await self._abort(
-                context, grpc.StatusCode.NOT_FOUND, "Task result not found."
-            )
-            return docling_serve_pb2.GetChunkResultResponse()
-
-        if not hasattr(task_result.result, "chunks"):
-            await self._abort(
-                context,
-                grpc.StatusCode.INVALID_ARGUMENT,
-                "Chunking result is not an in-body response.",
-            )
-            return docling_serve_pb2.GetChunkResultResponse()
-
-        requested_formats = self._requested_formats.pop(request.request.task_id, set())
-        response = chunk_result_to_proto(
-            task_result.result,
-            task_result.processing_time,
-            requested_formats=requested_formats,
-        )
-        with_single_use_cleanup(self._orchestrator, request.request.task_id)
-        return docling_serve_pb2.GetChunkResultResponse(response=response)
+        response = docling_serve_pb2.GetChunkResultResponse()
+        task_id = request.request.task_id
+        outcome = await self._task_outcome(task_id, context)
+        if outcome is None:
+            return response
+        requested_formats = self._requested_formats.pop(task_id, set())
+        if not await self._fill_chunk_result(
+            response, outcome, requested_formats, context
+        ):
+            return response
+        with_single_use_cleanup(self._orchestrator, task_id)
+        return response
 
     async def ClearConverters(
         self,
@@ -707,11 +749,15 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
     ) -> AsyncIterator[docling_serve_pb2.ConvertSourceStreamResponse]:
         await self._check_api_key(context)
 
-        response = await self.ConvertSource(
+        unary = await self.ConvertSource(
             docling_serve_pb2.ConvertSourceRequest(request=request.request),
             context,
         )
-        yield docling_serve_pb2.ConvertSourceStreamResponse(response=response.response)
+        response = docling_serve_pb2.ConvertSourceStreamResponse()
+        arm = unary.WhichOneof("result")
+        if arm is not None:
+            getattr(response, arm).CopyFrom(getattr(unary, arm))
+        yield response
 
     async def WatchConvertSource(
         self,
@@ -721,27 +767,10 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
         await self._check_api_key(context)
         await self._ensure_queue_started()
 
-        sources = await self._parse_sources(request.request.sources, context)
-        if sources is None:
+        prepared = await self._prepare_convert(request.request, context)
+        if prepared is None:
             return
-        options = await self._parse_options(
-            request.request.options if request.request.HasField("options") else None,
-            context,
-        )
-        if options is None:
-            return
-        target = self._parse_target(request.request)
-        options = await self._enforce_policy(context, sources, options, target)
-        if options is None:
-            return
-
-        task = await self._orchestrator.enqueue(
-            task_type=TaskType.CONVERT,
-            sources=sources,
-            convert_options=options,
-            target=target,
-        )
-
+        task = await self._enqueue(prepared, TaskType.CONVERT)
         async for status in self._poll_status_stream(task.task_id, context):
             yield docling_serve_pb2.WatchConvertSourceResponse(response=status)
 
@@ -753,41 +782,10 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
         await self._check_api_key(context)
         await self._ensure_queue_started()
 
-        sources = await self._parse_sources(request.request.sources, context)
-        if sources is None:
+        prepared = await self._prepare_chunk(request.request, context, hybrid=False)
+        if prepared is None:
             return
-        options = await self._parse_options(
-            request.request.convert_options
-            if request.request.HasField("convert_options")
-            else None,
-            context,
-        )
-        if options is None:
-            return
-        target = self._parse_target(request.request)
-        chunking_options = to_hierarchical_chunk_options(
-            request.request.chunking_options
-            if request.request.HasField("chunking_options")
-            else None
-        )
-        export_options = ChunkingExportOptions(
-            include_converted_doc=request.request.include_converted_doc
-        )
-        options = await self._enforce_policy(
-            context, sources, options, target, chunk=True
-        )
-        if options is None:
-            return
-
-        task = await self._orchestrator.enqueue(
-            task_type=TaskType.CHUNK,
-            sources=sources,
-            convert_options=options,
-            chunking_options=chunking_options,
-            chunking_export_options=export_options,
-            target=target,
-        )
-
+        task = await self._enqueue(prepared, TaskType.CHUNK)
         async for status in self._poll_status_stream(task.task_id, context):
             yield docling_serve_pb2.WatchChunkHierarchicalSourceResponse(
                 response=status
@@ -801,41 +799,10 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
         await self._check_api_key(context)
         await self._ensure_queue_started()
 
-        sources = await self._parse_sources(request.request.sources, context)
-        if sources is None:
+        prepared = await self._prepare_chunk(request.request, context, hybrid=True)
+        if prepared is None:
             return
-        options = await self._parse_options(
-            request.request.convert_options
-            if request.request.HasField("convert_options")
-            else None,
-            context,
-        )
-        if options is None:
-            return
-        target = self._parse_target(request.request)
-        chunking_options = to_hybrid_chunk_options(
-            request.request.chunking_options
-            if request.request.HasField("chunking_options")
-            else None
-        )
-        export_options = ChunkingExportOptions(
-            include_converted_doc=request.request.include_converted_doc
-        )
-        options = await self._enforce_policy(
-            context, sources, options, target, chunk=True
-        )
-        if options is None:
-            return
-
-        task = await self._orchestrator.enqueue(
-            task_type=TaskType.CHUNK,
-            sources=sources,
-            convert_options=options,
-            chunking_options=chunking_options,
-            chunking_export_options=export_options,
-            target=target,
-        )
-
+        task = await self._enqueue(prepared, TaskType.CHUNK)
         async for status in self._poll_status_stream(task.task_id, context):
             yield docling_serve_pb2.WatchChunkHybridSourceResponse(response=status)
 
@@ -847,7 +814,8 @@ class PublicErrorInterceptor(grpc.aio.ServerInterceptor):
     exception text is only exposed when ``debug_error_details`` is enabled;
     otherwise clients get a generic message while the full traceback is logged
     server-side. Explicit aborts (policy violations, validation errors) pass
-    through untouched.
+    through untouched. Queue backpressure (REST 503 + Retry-After) maps to
+    RESOURCE_EXHAUSTED so clients can back off without parsing text.
     """
 
     _FALLBACK = "Internal server error."
@@ -868,6 +836,10 @@ class PublicErrorInterceptor(grpc.aio.ServerInterceptor):
                     raise
                 except TaskNotFoundError:
                     await context.abort(grpc.StatusCode.NOT_FOUND, "Task not found.")
+                except RedisBackpressureError:
+                    await context.abort(
+                        grpc.StatusCode.RESOURCE_EXHAUSTED, _BACKPRESSURE_MESSAGE
+                    )
                 except Exception as exc:
                     _log.exception("Unhandled error in %s", method)
                     await context.abort(
@@ -896,6 +868,10 @@ class PublicErrorInterceptor(grpc.aio.ServerInterceptor):
                     raise
                 except TaskNotFoundError:
                     await context.abort(grpc.StatusCode.NOT_FOUND, "Task not found.")
+                except RedisBackpressureError:
+                    await context.abort(
+                        grpc.StatusCode.RESOURCE_EXHAUSTED, _BACKPRESSURE_MESSAGE
+                    )
                 except Exception as exc:
                     _log.exception("Unhandled error in %s", method)
                     await context.abort(

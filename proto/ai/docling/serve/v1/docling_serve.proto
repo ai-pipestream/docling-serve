@@ -27,6 +27,10 @@ service DoclingServeService {
   // Asynchronous document conversion - submits the task and returns status immediately.
   rpc ConvertSourceAsync(ConvertSourceAsyncRequest) returns (ConvertSourceAsyncResponse);
 
+  // Batch conversion from storage connectors to storage / presigned targets -
+  // mirrors POST /v1/convert/source/batch (always async; poll for status).
+  rpc ConvertSourceBatch(ConvertSourceBatchRequest) returns (ConvertSourceBatchResponse);
+
   // Synchronous hierarchical chunking - mirrors POST /v1/chunk/hierarchical/source
   rpc ChunkHierarchicalSource(ChunkHierarchicalSourceRequest) returns (ChunkHierarchicalSourceResponse);
 
@@ -93,8 +97,20 @@ message ConvertSourceRequest {
   ConvertDocumentRequest request = 1;
 }
 
+// ConvertSourceResponse is the typed mirror of the REST convert result union
+// (ConvertDocumentResponse | zip body | PresignedUrlConvertDocumentResponse |
+// PresignedUrlConvertResponse | TaskFailureResult). Which arm is set follows
+// the request target: inbody -> response, zip -> zip_archive, storage targets
+// -> remote_target, presigned_url -> presigned_artifacts. A task-scope failure
+// sets failure regardless of target.
 message ConvertSourceResponse {
-  ConvertDocumentResponse response = 1;
+  oneof result {
+    ConvertDocumentResponse response = 1;
+    ZipArchiveResult zip_archive = 2;
+    RemoteTargetResult remote_target = 3;
+    PresignedArtifactResult presigned_artifacts = 4;
+    TaskFailureResult failure = 5;
+  }
 }
 
 message ConvertSourceAsyncRequest {
@@ -105,12 +121,27 @@ message ConvertSourceAsyncResponse {
   TaskStatusPollResponse response = 1;
 }
 
+message ConvertSourceBatchRequest {
+  BatchConvertDocumentRequest request = 1;
+}
+
+message ConvertSourceBatchResponse {
+  TaskStatusPollResponse response = 1;
+}
+
 message ConvertSourceStreamRequest {
   ConvertDocumentRequest request = 1;
 }
 
+// Same result union as ConvertSourceResponse.
 message ConvertSourceStreamResponse {
-  ConvertDocumentResponse response = 1;
+  oneof result {
+    ConvertDocumentResponse response = 1;
+    ZipArchiveResult zip_archive = 2;
+    RemoteTargetResult remote_target = 3;
+    PresignedArtifactResult presigned_artifacts = 4;
+    TaskFailureResult failure = 5;
+  }
 }
 
 // --- Chunk ---
@@ -119,8 +150,13 @@ message ChunkHierarchicalSourceRequest {
   HierarchicalChunkRequest request = 1;
 }
 
+// Chunk results are always in-body; the only other REST outcome for a chunk
+// task is TaskFailureResult.
 message ChunkHierarchicalSourceResponse {
-  ChunkDocumentResponse response = 1;
+  oneof result {
+    ChunkDocumentResponse response = 1;
+    TaskFailureResult failure = 2;
+  }
 }
 
 message ChunkHybridSourceRequest {
@@ -128,7 +164,10 @@ message ChunkHybridSourceRequest {
 }
 
 message ChunkHybridSourceResponse {
-  ChunkDocumentResponse response = 1;
+  oneof result {
+    ChunkDocumentResponse response = 1;
+    TaskFailureResult failure = 2;
+  }
 }
 
 message ChunkHierarchicalSourceAsyncRequest {
@@ -161,8 +200,16 @@ message GetConvertResultRequest {
   TaskResultRequest request = 1;
 }
 
+// Same result union as ConvertSourceResponse (mirrors GET /v1/result for
+// convert tasks).
 message GetConvertResultResponse {
-  ConvertDocumentResponse response = 1;
+  oneof result {
+    ConvertDocumentResponse response = 1;
+    ZipArchiveResult zip_archive = 2;
+    RemoteTargetResult remote_target = 3;
+    PresignedArtifactResult presigned_artifacts = 4;
+    TaskFailureResult failure = 5;
+  }
 }
 
 message GetChunkResultRequest {
@@ -170,7 +217,10 @@ message GetChunkResultRequest {
 }
 
 message GetChunkResultResponse {
-  ChunkDocumentResponse response = 1;
+  oneof result {
+    ChunkDocumentResponse response = 1;
+    TaskFailureResult failure = 2;
+  }
 }
 
 // --- Clear ---

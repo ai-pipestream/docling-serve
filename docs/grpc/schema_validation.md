@@ -120,23 +120,54 @@ Normalize Pydantic types into canonical forms before comparison:
 
 ## 6) Known / Allowed Coercions (Allowlist)
 
-The allowlist is intentionally empty in the current contract:
+The core `DoclingDocument` contract has **no** coercions. Every entry in
+`ALLOWED_COERCIONS` belongs to the serve request/response surface and is
+justified inline in `schema_validator.py`. Keys are either a bare field path,
+a `**.field` suffix pattern, or a message-scoped `<ProtoMessage>.<field>`
+key (matched against the validation context, e.g.
+`TaskStatusPollResponse.task_status`).
 
-- `ALLOWED_COERCIONS = {}`
+Current serve-side coercions:
 
-Any newly introduced coercion must be explicitly justified and documented
-before being added.
+| Path | Pydantic | Proto | Why |
+|------|----------|-------|-----|
+| `ocr_engine` | `str` | `OcrEngine` enum (+ presets) | REST keeps the engine id open; gRPC closes it with a raw fallback. |
+| `headers` | `dict[str, Any]` | `map<string, string>` | HTTP headers are strings on the wire. |
+| `**.params`, `**.generation_config`, `**.extra_generation_config`, `**.extra_config`, `*_custom_config` (untyped ones) | `dict[str, Any]` | `map<string, ScalarValue>` | Open scalar bags; nesting is rejected by construction. |
+| typed `*_custom_config` | `Union[Model, dict]` | the `Model` message | gRPC exposes only the typed arm. |
+| `**.timings` | `dict[str, ProfilingItem]` | `map<string, double>` | Carries `ProfilingItem.total()`; full profile is a deferred wire change. |
+| `**.artifact_type` | `Literal[...]` | `ArtifactType` enum | Closed enum + `artifact_type_raw`. |
+| `**.url_expires_at` | `datetime | None` | `optional string` | ISO-8601. |
+| `**.metadata` (Chunk) | `dict | None` | `map<string, ScalarValue>` | Flattened dotted keys; `uint_value` for `binary_hash`. |
+| `TaskStatusPollResponse.task_status` | `ConversionStatus` | `TaskStatus` | Upstream types the REST field with the wider enum; identical strings for the four task states. |
+| `ProgressTaskCompleted.task_status` | `Literal["success","failure"]` | `TaskStatus` | Closed enum. |
+
+Sub-fields beneath an allowlisted path are not re-reported: the two sides
+represent that subtree differently by definition.
 
 ### Structural Equivalences (not coercions)
 
-These are type-level matches handled by `_TUPLE_MESSAGE_EQUIVALENCES` and
-`_ONEOF_WRAPPER_MESSAGES` — they do NOT go through the allowlist:
+These are type-level matches handled by `_TUPLE_MESSAGE_EQUIVALENCES`,
+`_ONEOF_WRAPPER_MESSAGES` and `_MESSAGE_NAME_EQUIVALENCES` — they do NOT go
+through the allowlist:
 
 - `Tuple[int, int]` ↔ `message:IntSpan` (charspan, range)
 - `Tuple[float, float]` ↔ `message:FloatPair` (chart coordinates)
 - `Tuple[str, int]` ↔ `message:StringIntPair` (stacked bar values)
 - `Union[str, Path]` ↔ `string` (Path is string-serializable)
-- Discriminated unions ↔ oneof wrapper messages (see §13.6)
+- Discriminated unions ↔ oneof wrapper messages (see §13.6). On the serve
+  side `Source` / `Target` wrap the connector request models, so a Pydantic
+  `Union[FileSourceRequest, ...]` is compatible with `message:Source`.
+- Pydantic model name ↔ proto message name where the wire name differs:
+  `ConvertDocumentsOptions`→`ConvertDocumentOptions`,
+  `ExportDocumentResponse`→`DocumentResponse`, `DocumentResultItem`→`Document`,
+  `ChunkedDocumentResultItem`→`Chunk`, `TaskProcessingMeta`→`TaskStatusMetadata`.
+- `_NESTED_LEAF_MODELS` (`ConvertDocumentsOptions`, `ExportDocumentResponse`)
+  are validated as their own top-level pair and treated as leaves when they
+  appear nested, so the request envelopes don't re-walk them.
+  `ExportDocumentResponse` is additionally a deliberate structural divergence:
+  REST inlines serialized strings (`md_content`, `json_content`, …) while gRPC
+  carries a typed `DoclingDocument` plus `DocumentExports`.
 
 ---
 
@@ -249,6 +280,13 @@ exist only in proto and have no Pydantic counterpart by design.
 | `language_raw` | `CodeLanguageLabel` | Forward-compat on `CodeMetaField.language` |
 | `code_raw` | `HumanLanguageLabel` | Forward-compat on `LanguageMetaField.code` |
 | `label_raw` | `DocItemLabel` | Forward-compat for unknown document labels |
+| `status_raw` | `ConversionStatus` | Serve response items / progress docs |
+| `category_raw`, `phase_raw` | `FailureCategory`, `FailurePhase` | `PublicFailureInfo`, `ErrorItem.category` |
+| `mean_grade_raw`, `low_grade_raw` | `QualityGrade` | `ConfidenceScores` |
+| `artifact_type_raw` | `ArtifactType` | `ArtifactRef` |
+| `task_type_raw` | `TaskType` | `TaskStatusPollResponse` |
+| `component_type_raw` | `DoclingComponentType` | `ErrorItem` |
+| `document_type_raw` | `InputFormat` | `DocumentCompletedItem` |
 
 ### 13.5) Base Field Wrappers (`_BASE_FIELD_WRAPPERS`)
 
@@ -274,6 +312,37 @@ Certain proto messages are treated as opaque leaf nodes — no recursive descent
   model dynamic JSON-like data.  Pydantic uses `Dict[str, Any]`.
 - **Tuple-equivalent messages** (`IntSpan`, `FloatPair`, `StringIntPair`) —
   matched structurally via `_TUPLE_MESSAGE_EQUIVALENCES`.
+- **`ScalarValue`** — closed scalar oneof used for `dict[str, Any]` bags.
+  Map values of this type are not descended either.
+- **`ConvertDocumentOptions`, `DocumentResponse` / `ExportDocumentResponse`**
+  — validated as their own top-level pair (see §6).
+
+### 13.8) Serve validation pairs (`validate_serve_types_schema`)
+
+Beyond the `DoclingDocument`, the startup validator compares every serve
+Pydantic model that has a wire counterpart, using the proto message name as
+the context so discriminator suppressions and scoped coercions resolve:
+
+- Options and connectors: `ConvertDocumentsOptions`, every `*SourceRequest`
+  / `*Target` arm (including `GenericSource` / `GenericTarget`).
+- Request envelopes: `ConvertSourcesRequest`, `BatchConvertSourcesRequest`,
+  `CallbackSpec`.
+- Responses: `ErrorItem`, `ConfidenceScores`, `PublicFailureInfo`,
+  `ArtifactRef`, `DocumentResultItem`, `DocumentArtifactItem`,
+  `ConvertDocumentResponse`, `ChunkedDocumentResultItem`,
+  `ChunkDocumentResponse`, `ZipArchiveResult`,
+  `PresignedUrlConvertDocumentResponse` (`RemoteTargetResult`),
+  `PresignedUrlConvertResponse` (`PresignedArtifactResult`),
+  `TaskFailureResult`, `TaskProcessingMeta`, `TaskStatusResponse`.
+- Progress callbacks: `ProgressSetNumDocs`, `ProcessedDocsItem`,
+  `ProgressUpdateProcessed`, `DocumentCompletedItem`,
+  `ProgressDocumentCompleted`, `ProgressTaskCompleted`.
+
+Pydantic `kind` discriminators on result / progress variants are absorbed by
+the parent oneof tag (`_PYDANTIC_ONLY_DISCRIMINATORS`). The only accepted
+proto-only fields are the `*_raw` fallbacks and `Generic{Source,Target}.attributes`
+(Pydantic uses `extra="allow"`); `test_serve_types_no_pydantic_fields_missing_on_proto`
+enforces this.
 
 ---
 

@@ -55,7 +55,10 @@ This is the standard gRPC pattern for binary payloads. Encode your file with bas
 | **Transport** | HTTP/1.1, JSON | HTTP/2, Protocol Buffers |
 | **File upload** | `multipart/form-data` | Base64 in `FileSource.base64_string` |
 | **Document conversion** | `POST /v1/convert/source` or `/v1/convert/file` | `ConvertSource` RPC (sources in request body) |
-| **Task status** | Poll `GET /v1/status/poll/{id}` or WebSocket `/v1/status/ws/{id}` | `PollTaskStatus` RPC or `Watch*` streaming RPCs |
+| **Batch conversion** | `POST /v1/convert/source/batch` (storage-to-storage, `targets`) | `ConvertSourceBatch` RPC (`BatchConvertDocumentRequest`, `Target.generic` for plugin targets) |
+| **Result** | `GET /v1/result/{id}` returns one of `ConvertDocumentResponse`, zip bytes, `PresignedUrlConvert*Response`, `TaskFailureResult` | `oneof result { response, zip_archive, remote_target, presigned_artifacts, failure }` on `GetConvertResultResponse` / `ConvertSourceResponse` |
+| **Task status** | Poll `GET /v1/status/poll/{id}` or WebSocket `/v1/status/ws/{id}` | `PollTaskStatus` RPC or `Watch*` streaming RPCs (`task_type` enum, `error_message`, typed `failure`) |
+| **Progress callbacks** | `callbacks: [CallbackSpec]` on requests | Same `callbacks` field on convert / chunk / batch requests; gated by `callbacks_enabled` |
 | **Streaming** | WebSocket for status updates | Server-streaming `WatchConvertSource`, `WatchChunkHierarchicalSource`, etc. |
 | **Health** | `GET /health` | `Health` RPC (includes `version` field) |
 | **Metrics/version/docs** | `GET /metrics`, `GET /version`, OpenAPI docs | Health RPC returns version; no OpenAPI |
@@ -68,16 +71,19 @@ These are feature-parity decisions, not gaps. The contract is parity of
 *capability* with REST, expressed through gRPC-native idioms rather than a
 1:1 endpoint mirror.
 
-- **Batch convert endpoint** (`POST /v1/convert/source/batch`): not mirrored
-  as a separate RPC. `ConvertSource` already accepts `repeated Source`, which
-  is the gRPC-native equivalent of submitting multiple documents in one
-  request. REST needed a separate batch route because its single-convert
-  endpoint predates batching; the gRPC surface does not carry that history.
-  Per-document progress for large batches is available through the async +
-  `PollTaskStatus` flow (`TaskStatusMetadata` reports `num_docs`,
-  `num_processed`, `num_succeeded`, `num_failed`). If upstream batch semantics
-  diverge further (e.g. per-document task fan-out), revisit with a dedicated
-  `ConvertSourceBatch` RPC.
+- **Batch convert** (`POST /v1/convert/source/batch`): mirrored as
+  `ConvertSourceBatch` now that upstream batch semantics diverged from
+  single convert (multiple `targets`, plugin `GenericTargetRequest`, no inline
+  sources, no in-body target). The RPC builds the same
+  `BatchConvertSourcesRequest` Pydantic model and runs REST's
+  `validate_batch_convert_request`, so the rules stay identical. Small
+  multi-document jobs can still use `ConvertSource` with `repeated Source`.
+- **Result union**: REST returns different JSON bodies (or raw zip bytes) from
+  `/v1/result`; gRPC types each outcome as a `oneof result` arm. In-body
+  exports keep the `response` arm at tag 1, so pre-union clients that read
+  `.response.document` continue to work.
+- **Timings**: `map<string, double>` of `ProfilingItem.total()` rather than
+  the full `ProfilingItem` REST inlines (see the Pydantic API changelog).
 
 ### Policy enforcement
 
@@ -94,7 +100,12 @@ See `docling_serve/grpc/policy_enforcement.py`.
 Unhandled server errors are sanitized the same way as REST (#609): clients
 receive a generic `INTERNAL` status unless `DOCLING_SERVE_DEBUG_ERROR_DETAILS`
 is enabled; full tracebacks are always logged server-side. Validation and
-policy errors are returned verbatim, matching REST 422 behavior.
+policy errors are returned verbatim, matching REST 422 behavior. Queue
+back-pressure (`RedisBackpressureError`, REST 503) maps to
+`RESOURCE_EXHAUSTED`; unknown task ids map to `NOT_FOUND`. A task that
+finished with a task-scope failure is not an RPC error: it is returned on the
+`failure` result arm as `TaskFailureResult` / `PublicFailureInfo`, exactly as
+`GET /v1/result` does.
 
 ## Protobuf Definitions
 

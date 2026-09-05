@@ -1,9 +1,9 @@
 """Fork-owned document streaming service (DocumentStreamEnvelope).
 
-Phase 1 is honest: status events around a real conversion, then
-``final_document`` payload(s). ``DocumentNode`` parts are reserved until the
-pipeline can emit partial items — we do not fake page yields from a finished
-document.
+Phase 1 is honest: status + typed progress events around a real conversion,
+then ``final_document`` payload(s). ``DocumentNode`` parts and
+``document_completed`` progress are reserved until the pipeline / orchestrator
+can emit per-source events — we do not fake them from a finished result.
 """
 
 from __future__ import annotations
@@ -11,27 +11,42 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import AsyncIterator
-from typing import Optional
+from collections.abc import AsyncIterator, Callable, Iterator
 
 import grpc
 
-from docling_jobkit.datamodel.task_meta import TaskType
+from docling.datamodel.service.responses import (
+    DocumentResultItem,
+    PresignedArtifactResult,
+    RemoteTargetResult,
+    ZipArchiveResult,
+)
+from docling_jobkit.datamodel.stored_outcome import (
+    StoredFailureOutcome,
+    StoredSuccessOutcome,
+)
+from docling_jobkit.datamodel.task_meta import TaskStatus, TaskType
 
 from docling_serve.grpc.gen.ai.docling.serve.v1 import (
     docling_serve_stream_pb2,
     docling_serve_stream_pb2_grpc,
+    docling_serve_types_pb2,
 )
 from docling_serve.grpc.mapping import (
+    UnexpectedResultType,
     document_response_to_proto,
-    requested_output_formats,
-    to_convert_options,
+    progress_set_num_docs,
+    progress_task_completed,
+    progress_update_processed,
+    public_failure_to_proto,
     with_single_use_cleanup,
 )
-from docling_serve.grpc.server import DoclingServeGrpcService
+from docling_serve.grpc.server import DoclingServeGrpcService, RequestRejected
 from docling_serve.settings import docling_serve_settings
 
 _log = logging.getLogger(__name__)
+
+_Code = docling_serve_stream_pb2.StreamErrorCode
 
 
 class DoclingStreamingGrpcService(
@@ -45,13 +60,14 @@ class DoclingStreamingGrpcService(
     def _envelope(
         self,
         *,
-        request_id: Optional[str],
+        request_id: str | None,
         sequence: int,
-        source_index: Optional[int] = None,
-        status: Optional[docling_serve_stream_pb2.StreamStatus] = None,
+        source_index: int | None = None,
+        status: docling_serve_stream_pb2.StreamStatus | None = None,
         final_document=None,
-        source_result: Optional[docling_serve_stream_pb2.StreamSourceResult] = None,
-        error: Optional[docling_serve_stream_pb2.StreamError] = None,
+        source_result: docling_serve_stream_pb2.StreamSourceResult | None = None,
+        error: docling_serve_stream_pb2.StreamError | None = None,
+        progress: docling_serve_types_pb2.TaskProgress | None = None,
     ) -> docling_serve_stream_pb2.StreamDocumentResponse:
         msg = docling_serve_stream_pb2.StreamDocumentResponse(
             sequence_number=sequence,
@@ -69,7 +85,75 @@ class DoclingStreamingGrpcService(
             msg.source_result.CopyFrom(source_result)
         elif error is not None:
             msg.error.CopyFrom(error)
+        elif progress is not None:
+            msg.progress.CopyFrom(progress)
         return msg
+
+    @staticmethod
+    def _error(
+        code: int, message: str, *, terminal: bool = True, failure=None
+    ) -> docling_serve_stream_pb2.StreamError:
+        err = docling_serve_stream_pb2.StreamError(
+            code=code, message=message, terminal=terminal
+        )
+        if failure is not None:
+            err.failure.CopyFrom(public_failure_to_proto(failure))
+        return err
+
+    def _result_envelopes(
+        self,
+        result,
+        requested_formats,
+        request_id: str | None,
+        next_seq: Callable[[], int],
+    ) -> Iterator[docling_serve_stream_pb2.StreamDocumentResponse]:
+        """Yield the per-result payload envelopes for a successful task.
+
+        Dispatches on the typed ``DoclingTaskResult.result`` union: in-body
+        documents are streamed as source_result + final_document; presigned
+        artifacts report per-source outcomes (ArtifactRefs are fetched via
+        GetConvertResult); zip / remote targets carry no in-band payload.
+        """
+        if isinstance(result, DocumentResultItem):
+            doc_proto = document_response_to_proto(result.document, requested_formats)
+            has_doc = doc_proto.HasField("doc")
+            yield self._envelope(
+                request_id=request_id,
+                sequence=next_seq(),
+                source_index=0,
+                source_result=docling_serve_stream_pb2.StreamSourceResult(
+                    source_index=0,
+                    filename=doc_proto.filename or "",
+                    success=True,
+                    document_name=doc_proto.doc.name if has_doc else "",
+                ),
+            )
+            if has_doc:
+                yield self._envelope(
+                    request_id=request_id,
+                    sequence=next_seq(),
+                    source_index=0,
+                    final_document=doc_proto.doc,
+                )
+        elif isinstance(result, PresignedArtifactResult):
+            for item in result.documents:
+                source_result = docling_serve_stream_pb2.StreamSourceResult(
+                    source_index=item.source_index,
+                    filename=item.filename,
+                    success=not item.errors,
+                )
+                if item.errors:
+                    source_result.error_message = item.errors[0].error_message
+                yield self._envelope(
+                    request_id=request_id,
+                    sequence=next_seq(),
+                    source_index=item.source_index,
+                    source_result=source_result,
+                )
+        elif not isinstance(result, (ZipArchiveResult, RemoteTargetResult)):
+            raise UnexpectedResultType(
+                f"Unexpected result type {type(result).__name__}."
+            )
 
     async def StreamDocument(
         self,
@@ -96,55 +180,19 @@ class DoclingStreamingGrpcService(
             ),
         )
 
-        convert_request = request.request
-        requested_formats = requested_output_formats(
-            convert_request.options if convert_request.HasField("options") else None
-        )
-        sources = await self._convert._parse_sources(convert_request.sources, context)
-        if sources is None:
-            yield self._envelope(
-                request_id=request_id,
-                sequence=next_seq(),
-                error=docling_serve_stream_pb2.StreamError(
-                    code="INVALID_ARGUMENT",
-                    message="Invalid or empty sources.",
-                    terminal=True,
-                ),
-            )
-            return
-
+        # Validation failures are reported on the stream (not as an abort) so
+        # the envelope stays the single channel clients read.
         try:
-            options = to_convert_options(
-                convert_request.options if convert_request.HasField("options") else None
-            )
-        except ValueError as exc:
+            prepared = self._convert.build_convert(request.request)
+        except RequestRejected as exc:
             yield self._envelope(
                 request_id=request_id,
                 sequence=next_seq(),
-                error=docling_serve_stream_pb2.StreamError(
-                    code="INVALID_ARGUMENT",
-                    message=str(exc),
-                    terminal=True,
-                ),
-            )
-            return
-        self._convert._ensure_doc_format(options, requested_formats)
-        target = self._convert._parse_target(convert_request)
-        options = await self._convert._enforce_policy(
-            context, sources, options, target
-        )
-        if options is None:
-            yield self._envelope(
-                request_id=request_id,
-                sequence=next_seq(),
-                error=docling_serve_stream_pb2.StreamError(
-                    code="INVALID_ARGUMENT",
-                    message="Request rejected by server policy.",
-                    terminal=True,
-                ),
+                error=self._error(_Code.STREAM_ERROR_CODE_INVALID_ARGUMENT, str(exc)),
             )
             return
 
+        sources = prepared.sources
         yield self._envelope(
             request_id=request_id,
             sequence=next_seq(),
@@ -154,16 +202,19 @@ class DoclingStreamingGrpcService(
                 num_docs=len(sources),
             ),
         )
-
-        task = await self._convert._orchestrator.enqueue(
-            task_type=TaskType.CONVERT,
-            sources=sources,
-            convert_options=options,
-            target=target,
+        yield self._envelope(
+            request_id=request_id,
+            sequence=next_seq(),
+            progress=progress_set_num_docs(len(sources)),
         )
 
-        # Phase 1: poll for status updates (same honesty as Watch*), then emit
-        # final_document. DocumentNode parts wait for pipeline hooks.
+        task = await self._convert._enqueue(prepared, TaskType.CONVERT)
+
+        # Phase 1: poll for status updates (same honesty as Watch*), emitting a
+        # typed update_processed whenever the orchestrator counters move, then
+        # the final payload(s). DocumentNode parts wait for pipeline hooks.
+        last_meta = None
+        task_status = None
         while not context.done():
             task_status = await self._convert._orchestrator.task_status(
                 task_id=task.task_id
@@ -171,37 +222,38 @@ class DoclingStreamingGrpcService(
             position = await self._convert._orchestrator.get_queue_position(
                 task_id=task.task_id
             )
-            meta = getattr(task_status, "task_status_meta", None) or getattr(
-                task_status, "meta", None
-            )
+            meta = task_status.processing_meta
             status_kwargs: dict = {
                 "phase": docling_serve_stream_pb2.StreamStatus.PHASE_PROCESSING,
-                "message": str(getattr(task_status, "task_status", "processing")),
+                "message": task_status.task_status.value,
             }
             if position is not None:
                 status_kwargs["queue_position"] = int(position)
             if meta is not None:
-                for field, attr in (
-                    ("num_docs", "num_docs"),
-                    ("num_processed", "num_processed"),
-                    ("num_succeeded", "num_succeeded"),
-                    ("num_failed", "num_failed"),
-                ):
-                    value = getattr(meta, attr, None)
-                    if value is not None:
-                        status_kwargs[field] = int(value)
-                total = status_kwargs.get("num_docs")
-                processed = status_kwargs.get("num_processed")
-                if total and processed is not None and total > 0:
-                    status_kwargs["progress_percentage"] = float(processed) / float(
-                        total
-                    )
+                status_kwargs.update(
+                    num_docs=meta.num_docs,
+                    num_processed=meta.num_processed,
+                    num_succeeded=meta.num_succeeded,
+                    num_partially_succeeded=meta.num_partially_succeeded,
+                    num_failed=meta.num_failed,
+                )
+                if meta.num_docs > 0:
+                    status_kwargs["progress_percentage"] = float(
+                        meta.num_processed
+                    ) / float(meta.num_docs)
 
             yield self._envelope(
                 request_id=request_id,
                 sequence=next_seq(),
                 status=docling_serve_stream_pb2.StreamStatus(**status_kwargs),
             )
+            if meta is not None and meta != last_meta:
+                last_meta = meta.model_copy()
+                yield self._envelope(
+                    request_id=request_id,
+                    sequence=next_seq(),
+                    progress=progress_update_processed(meta),
+                )
 
             if task_status.is_completed():
                 break
@@ -209,56 +261,65 @@ class DoclingStreamingGrpcService(
         else:
             return
 
-        task_result = await self._convert._orchestrator.task_result(task_id=task.task_id)
-        if task_result is None:
+        outcome = await self._convert._orchestrator.task_outcome(task_id=task.task_id)
+        if outcome is None:
+            outcome = await self._convert._failure_from_task_status(task.task_id)
+        if outcome is None:
             yield self._envelope(
                 request_id=request_id,
                 sequence=next_seq(),
-                error=docling_serve_stream_pb2.StreamError(
-                    code="NOT_FOUND",
-                    message="Task result not found.",
-                    terminal=True,
+                error=self._error(
+                    _Code.STREAM_ERROR_CODE_NOT_FOUND, "Task result not found."
+                ),
+            )
+            return
+        if isinstance(outcome, StoredSuccessOutcome):
+            outcome = outcome.result
+
+        if isinstance(outcome, StoredFailureOutcome) or (
+            task_status is not None and task_status.task_status == TaskStatus.FAILURE
+        ):
+            failure = (
+                outcome.failure
+                if isinstance(outcome, StoredFailureOutcome)
+                else task_status.failure
+            )
+            yield self._envelope(
+                request_id=request_id,
+                sequence=next_seq(),
+                progress=progress_task_completed(task_status),
+            )
+            yield self._envelope(
+                request_id=request_id,
+                sequence=next_seq(),
+                error=self._error(
+                    _Code.STREAM_ERROR_CODE_CONVERT_FAILED,
+                    (failure.message if failure is not None else None)
+                    or task_status.error_message
+                    or "Conversion failed.",
+                    failure=failure,
                 ),
             )
             return
 
-        if not hasattr(task_result.result, "content"):
+        try:
+            for envelope in self._result_envelopes(
+                outcome.result, prepared.requested_formats, request_id, next_seq
+            ):
+                yield envelope
+        except UnexpectedResultType as exc:
             yield self._envelope(
                 request_id=request_id,
                 sequence=next_seq(),
-                error=docling_serve_stream_pb2.StreamError(
-                    code="INVALID_ARGUMENT",
-                    message="Conversion result is not an in-body document.",
-                    terminal=True,
-                ),
+                error=self._error(_Code.STREAM_ERROR_CODE_INTERNAL, str(exc)),
             )
             return
-
-        doc_proto = document_response_to_proto(
-            task_result.result.content, requested_formats
-        )
-        filename = doc_proto.filename or ""
 
         yield self._envelope(
             request_id=request_id,
             sequence=next_seq(),
-            source_index=0,
-            source_result=docling_serve_stream_pb2.StreamSourceResult(
-                source_index=0,
-                filename=filename,
-                success=True,
-                document_name=doc_proto.doc.name if doc_proto.HasField("doc") else "",
-            ),
+            progress=progress_task_completed(task_status),
         )
-
-        if doc_proto.HasField("doc"):
-            yield self._envelope(
-                request_id=request_id,
-                sequence=next_seq(),
-                source_index=0,
-                final_document=doc_proto.doc,
-            )
-
         yield self._envelope(
             request_id=request_id,
             sequence=next_seq(),
@@ -267,9 +328,10 @@ class DoclingStreamingGrpcService(
                 message="completed",
                 progress_percentage=1.0,
                 num_docs=len(sources),
-                num_processed=len(sources),
-                num_succeeded=1,
-                num_failed=0,
+                num_processed=outcome.num_converted,
+                num_succeeded=outcome.num_succeeded,
+                num_partially_succeeded=outcome.num_partially_succeeded,
+                num_failed=outcome.num_failed,
             ),
         )
 

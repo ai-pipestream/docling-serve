@@ -80,6 +80,13 @@ message StreamDocumentResponse {
 
     // Terminal or recoverable error associated with the stream / source.
     StreamError error = 14;
+
+    // Typed progress kinds (same union docling POSTs to CallbackSpec.url).
+    // Phase 1 emits set_num_docs, update_processed (counters from the
+    // orchestrator's TaskProcessingMeta; docs list empty until per-source
+    // hooks land) and task_completed. document_completed is reserved for
+    // Phase 2 fan-out — it is not synthesized from the finished result.
+    TaskProgress progress = 15;
   }
 }
 
@@ -109,6 +116,8 @@ message StreamStatus {
 
   // Orchestrator queue position when known.
   optional uint32 queue_position = 8;
+
+  optional uint32 num_partially_succeeded = 9;
 }
 
 // DocumentNode wraps a single hydrated core item for live UI / embedding.
@@ -147,8 +156,25 @@ message StreamSourceResult {
   optional string document_name = 5;
 }
 
+// StreamErrorCode is the closed set of machine codes a StreamError carries.
+// Names track the gRPC status the same condition would abort a unary RPC with,
+// plus CONVERT_FAILED for a task that ran and failed.
+enum StreamErrorCode {
+  STREAM_ERROR_CODE_UNSPECIFIED = 0;
+  STREAM_ERROR_CODE_INVALID_ARGUMENT = 1;
+  STREAM_ERROR_CODE_NOT_FOUND = 2;
+  STREAM_ERROR_CODE_CONVERT_FAILED = 3;
+  STREAM_ERROR_CODE_RESOURCE_EXHAUSTED = 4;
+  STREAM_ERROR_CODE_INTERNAL = 5;
+}
+
 message StreamError {
-  string code = 1; // stable machine code, e.g. "INVALID_ARGUMENT", "CONVERT_FAILED"
+  // Tag 1 carried code as a free string.
+  reserved 1;
+
   string message = 2;
   bool terminal = 3; // if true, no further envelopes will follow for this stream
+  StreamErrorCode code = 4;
+  // Structured task-scope failure when the stream ended in CONVERT_FAILED.
+  optional PublicFailureInfo failure = 5;
 }
