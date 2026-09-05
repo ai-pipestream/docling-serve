@@ -85,6 +85,7 @@ enum PdfBackend {
   PDF_BACKEND_DLPARSE_V4 = 3;
   PDF_BACKEND_PYPDFIUM2 = 4;
   PDF_BACKEND_DOCLING_PARSE = 5;
+  PDF_BACKEND_THREADED_DOCLING_PARSE = 6;
 }
 
 // Table structure extraction mode.
@@ -101,6 +102,8 @@ enum ProcessingPipeline {
   PROCESSING_PIPELINE_STANDARD = 2;
   PROCESSING_PIPELINE_VLM = 3;
   PROCESSING_PIPELINE_LEGACY = 4;
+  // Model-free PDF text/image extract via docling-parse (docling-slim 2.126+).
+  PROCESSING_PIPELINE_NATIVE = 5;
 }
 
 // Image reference mode for export.
