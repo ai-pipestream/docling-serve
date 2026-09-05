@@ -255,6 +255,11 @@ _PROTO_ONLY_PREFIXES: set[str] = {
     "chart_data.grid",
 }
 
+# Wire form of Pydantic `extra="allow"` payloads on serve connector models
+# (GenericSource.attributes / GenericTarget.attributes). The Pydantic side has
+# no declared field for the extras, so the map is matched by type, not name.
+_SCALAR_EXTRAS_MAP = "map<string,message:ScalarValue>"
+
 # Pydantic-only discriminator fields that are absorbed into a proto oneof
 # tag. Pydantic's discriminated unions (Annotated[Union[...], discriminator=X])
 # require a per-variant string field carrying the variant name. Proto
@@ -1266,6 +1271,17 @@ def validate_serve_types_schema() -> None:
         pr_fields = _collect_proto_fields(descriptor)
         total_py += len(py_fields)
         total_pr += len(pr_fields)
+        # Models declared with `extra="allow"` (the generic connector escape
+        # hatches) have no declared field for their payload; the proto carries
+        # those open extras as a single typed map<string, ScalarValue>. That
+        # map is the wire form of the extras, not a proto-only divergence.
+        if model_cls.model_config.get("extra") == "allow":
+            for path in [p for p in pr_fields if "." not in p]:
+                if pr_fields[path] == _SCALAR_EXTRAS_MAP:
+                    allowed.append(
+                        f"{proto_name}.{path}: extra='allow' -> {_SCALAR_EXTRAS_MAP}"
+                    )
+                    del pr_fields[path]
         # Context uses the proto message name so discriminator suppressions
         # (_PYDANTIC_ONLY_DISCRIMINATORS) resolve against wire message names.
         m, a, mp, md = _compare_fields(py_fields, pr_fields, context=f"{proto_name}.")

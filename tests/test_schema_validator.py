@@ -29,22 +29,18 @@ def test_validate_serve_types_passes_on_current_schemas():
 def test_serve_types_no_pydantic_fields_missing_on_proto(caplog):
     """Every serve Pydantic field (requests, responses, callbacks) is on the wire.
 
-    Proto-only fields are limited to the documented *_raw fallbacks and the
-    Generic{Source,Target}.attributes bags (Pydantic uses extra="allow").
+    Proto-only fields are limited to the documented *_raw fallbacks. The
+    Generic{Source,Target}.attributes bags are the wire form of Pydantic's
+    extra="allow" and are reported as allowed coercions, not divergences.
     """
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.INFO):
         validate_serve_types_schema()
     assert "Serve fields in Pydantic but not in proto" not in caplog.text
-    proto_only = [
-        line
-        for line in caplog.text.splitlines()
-        if "Serve fields in proto but not in Pydantic" in line
-    ]
-    if proto_only:
-        _, _, listed = proto_only[0].partition("): ")
-        extras = {p.strip() for p in listed.split(",")}
-        assert extras <= {"GenericSource.attributes", "GenericTarget.attributes"}, (
-            extras
+    assert "Serve fields in proto but not in Pydantic" not in caplog.text
+    for message in ("GenericSource", "GenericTarget"):
+        assert (
+            f"{message}.attributes: extra='allow' -> map<string,message:ScalarValue>"
+            in caplog.text
         )
 
 
