@@ -340,8 +340,11 @@ the context so discriminator suppressions and scoped coercions resolve:
 
 Pydantic `kind` discriminators on result / progress variants are absorbed by
 the parent oneof tag (`_PYDANTIC_ONLY_DISCRIMINATORS`). The only accepted
-proto-only fields are the `*_raw` fallbacks and `Generic{Source,Target}.attributes`
-(Pydantic uses `extra="allow"`); `test_serve_types_no_pydantic_fields_missing_on_proto`
+proto-only fields are the `*_raw` fallbacks and `Generic{Source,Target}.attributes`:
+those models declare `extra="allow"`, so the validator treats a top-level
+`map<string, ScalarValue>` on the proto side as the wire form of the extras
+(`_SCALAR_EXTRAS_MAP`) and reports it as an allowed coercion rather than a
+proto-only field. `test_serve_types_no_pydantic_fields_missing_on_proto`
 enforces this.
 
 ---
