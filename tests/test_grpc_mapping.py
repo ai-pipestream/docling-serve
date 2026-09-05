@@ -286,6 +286,28 @@ def test_pdf_backend_proto_covers_pydantic():
     )
 
 
+def test_to_convert_options_unsupported_pipeline_tag_rejected(monkeypatch):
+    """A pipeline tag the proto defines but the installed engine lacks must raise
+    rather than silently fall back to the default pipeline."""
+    import docling_serve.grpc.mapping as mapping_mod
+
+    monkeypatch.setattr(mapping_mod, "_map_pipeline", lambda value: None)
+    opts = docling_serve_types_pb2.ConvertDocumentOptions(
+        pipeline=docling_serve_types_pb2.PROCESSING_PIPELINE_NATIVE
+    )
+    with pytest.raises(ValueError, match="PROCESSING_PIPELINE_NATIVE"):
+        to_convert_options(opts)
+
+
+def test_to_convert_options_unknown_pipeline_int_dropped():
+    """A numeric tag this proto does not know (newer client) is ignored, matching
+    the lenient handling of every other enum field."""
+    opts = docling_serve_types_pb2.ConvertDocumentOptions()
+    opts.pipeline = 999
+    mapped = to_convert_options(opts)
+    assert mapped.pipeline == to_convert_options(None).pipeline
+
+
 def test_processing_pipeline_proto_covers_pydantic():
     """Guard against future drift: every Pydantic ProcessingPipeline value must be
     reachable via _map_pipeline from at least one proto enum tag."""

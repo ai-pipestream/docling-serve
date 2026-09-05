@@ -113,9 +113,21 @@ class DoclingStreamingGrpcService(
             )
             return
 
-        options = to_convert_options(
-            convert_request.options if convert_request.HasField("options") else None
-        )
+        try:
+            options = to_convert_options(
+                convert_request.options if convert_request.HasField("options") else None
+            )
+        except ValueError as exc:
+            yield self._envelope(
+                request_id=request_id,
+                sequence=next_seq(),
+                error=docling_serve_stream_pb2.StreamError(
+                    code="INVALID_ARGUMENT",
+                    message=str(exc),
+                    terminal=True,
+                ),
+            )
+            return
         self._convert._ensure_doc_format(options, requested_formats)
         target = self._convert._parse_target(convert_request)
         options = await self._convert._enforce_policy(
