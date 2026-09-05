@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import enum
 import logging
 from collections.abc import Iterable
 from typing import Optional
 
-from docling.datamodel.base_models import InputFormat, OutputFormat
+from pydantic import BaseModel
+
+from docling.datamodel.base_models import (
+    InputFormat,
+    OutputFormat,
+    QualityGrade,
+)
 from docling.datamodel.pipeline_options import (
     CodeFormulaVlmOptions,
     HeadingHierarchyOptions,
@@ -19,6 +26,7 @@ from docling.datamodel.pipeline_options_vlm_model import (
     ResponseFormat,
     TransformersModelType,
 )
+from docling.datamodel.service.callbacks import CallbackSpec
 from docling.datamodel.service.options import (
     PictureDescriptionApi,
     PictureDescriptionLocal,
@@ -27,12 +35,27 @@ from docling.datamodel.service.options import (
 )
 from docling.datamodel.service.requests import (
     AzureBlobSourceRequest,
+    BatchConvertSourcesRequest,
     FileSourceRequest,
     GenericSourceRequest,
+    GenericTargetRequest,
     GoogleCloudStorageSourceRequest,
     GoogleDriveSourceRequest,
     HttpSourceRequest,
     S3SourceRequest,
+)
+from docling.datamodel.service.responses import (
+    ArtifactRef,
+    ChunkedDocumentResult,
+    ConfidenceScores,
+    DocumentArtifactItem,
+    DocumentResultItem,
+    FailureCategory,
+    FailurePhase,
+    PresignedArtifactResult,
+    PublicFailureInfo,
+    RemoteTargetResult,
+    ZipArchiveResult,
 )
 from docling.datamodel.service.sources import (
     GoogleCloudStorageServiceAccountInfo,
@@ -59,20 +82,21 @@ from docling.models.inference_engines.vlm.base import (
     VlmEngineType,
 )
 from docling.utils.profiling import ProfilingItem
+from docling_core.proto.gen.ai.docling.core.v1 import docling_document_pb2
 from docling_core.types.doc import ImageRefMode
 from docling_core.types.doc.labels import PictureClassificationLabel
 from docling_jobkit.datamodel.chunking import (
     HierarchicalChunkerOptions,
     HybridChunkerOptions,
 )
+from docling_jobkit.datamodel.result import DoclingTaskResult
 from docling_jobkit.datamodel.task import Task
-from docling_jobkit.datamodel.task_meta import TaskStatus
+from docling_jobkit.datamodel.task_meta import TaskProcessingMeta, TaskStatus, TaskType
 
 from docling_serve.datamodel.convert import ConvertDocumentsRequestOptions
 from docling_serve.settings import docling_serve_settings
 
 from .docling_document_converter import docling_document_to_proto
-from docling_core.proto.gen.ai.docling.core.v1 import docling_document_pb2
 from .gen.ai.docling.serve.v1 import docling_serve_types_pb2
 
 _log = logging.getLogger(__name__)
@@ -146,9 +170,8 @@ def _map_output_format(value: int) -> Optional[OutputFormat]:
         "OUTPUT_FORMAT_DOCLANG": OutputFormat.DOCLANG,
         "OUTPUT_FORMAT_DCLX": OutputFormat.DCLX,
         "OUTPUT_FORMAT_CHUNKS": OutputFormat.CHUNKS,
+        "OUTPUT_FORMAT_LATEX": OutputFormat.LATEX,
     }
-    if hasattr(OutputFormat, "LATEX"):
-        mapping["OUTPUT_FORMAT_LATEX"] = OutputFormat.LATEX
     return mapping.get(name)
 
 
@@ -296,11 +319,80 @@ def _scalar_value_to_python(value: docling_serve_types_pb2.ScalarValue):
         return value.double_value
     if kind == "bool_value":
         return value.bool_value
+    if kind == "uint_value":
+        return value.uint_value
     return None
 
 
 def _scalar_map_to_dict(proto_map) -> dict:
     return {k: _scalar_value_to_python(v) for k, v in proto_map.items()}
+
+
+_INT64_MAX = (1 << 63) - 1
+_INT64_MIN = -(1 << 63)
+_UINT64_MAX = (1 << 64) - 1
+
+
+def _python_to_scalar_value(value) -> Optional[docling_serve_types_pb2.ScalarValue]:
+    """Encode a Python scalar as a ScalarValue; None for non-scalar values."""
+    message = docling_serve_types_pb2.ScalarValue()
+    if isinstance(value, bool):
+        message.bool_value = value
+    elif isinstance(value, int):
+        if _INT64_MIN <= value <= _INT64_MAX:
+            message.int_value = value
+        elif 0 <= value <= _UINT64_MAX:
+            message.uint_value = value
+        else:
+            return None
+    elif isinstance(value, float):
+        message.double_value = value
+    elif isinstance(value, str):
+        message.string_value = value
+    else:
+        return None
+    return message
+
+
+def _flatten_scalar_map(
+    values: dict, out: dict[str, docling_serve_types_pb2.ScalarValue], prefix: str = ""
+) -> None:
+    """Flatten nested dicts / models / sequences into dotted-key scalars.
+
+    Chunk metadata is ``dict[str, Any]`` upstream and today holds a
+    ``DocumentOrigin`` model plus flags. Flattening keeps every leaf typed on
+    the wire instead of stringifying the structure.
+    """
+    for key, value in values.items():
+        path = f"{prefix}{key}"
+        if value is None:
+            continue
+        if isinstance(value, BaseModel):
+            _flatten_scalar_map(value.model_dump(), out, f"{path}.")
+        elif isinstance(value, dict):
+            _flatten_scalar_map(value, out, f"{path}.")
+        elif isinstance(value, (list, tuple)):
+            _flatten_scalar_map(
+                {str(i): item for i, item in enumerate(value)}, out, f"{path}."
+            )
+        else:
+            if isinstance(value, enum.Enum):
+                value = value.value
+            scalar = _python_to_scalar_value(value)
+            if scalar is None:
+                # Remaining leaves are URL / datetime style objects whose
+                # canonical form is their text (matches Pydantic JSON mode).
+                scalar = _python_to_scalar_value(str(value))
+            out[path] = scalar
+
+
+def _dict_to_scalar_map(
+    values: Optional[dict],
+) -> dict[str, docling_serve_types_pb2.ScalarValue]:
+    out: dict[str, docling_serve_types_pb2.ScalarValue] = {}
+    if values:
+        _flatten_scalar_map(values, out)
+    return out
 
 
 def _map_picture_classification_labels(values) -> list[PictureClassificationLabel]:
@@ -700,7 +792,50 @@ def to_task_target(proto_target: Optional[docling_serve_types_pb2.Target]):
         if gd.HasField("credentials"):
             data["credentials"] = _to_google_drive_credentials(gd.credentials)
         return GoogleDriveTarget.model_validate(data)
+    if kind == "generic":
+        gen = proto_target.generic
+        payload = {"kind": gen.kind}
+        payload.update(_scalar_map_to_dict(gen.attributes))
+        return GenericTargetRequest.model_validate(payload)
     return InBodyTarget()
+
+
+def to_callbacks(
+    proto_callbacks: Iterable[docling_serve_types_pb2.CallbackSpec],
+) -> list[CallbackSpec]:
+    callbacks: list[CallbackSpec] = []
+    for spec in proto_callbacks:
+        data: dict[str, object] = {"url": spec.url}
+        if spec.headers:
+            data["headers"] = dict(spec.headers)
+        if spec.ca_cert:
+            data["ca_cert"] = spec.ca_cert
+        callbacks.append(CallbackSpec.model_validate(data))
+    return callbacks
+
+
+def to_batch_convert_request(
+    proto: docling_serve_types_pb2.BatchConvertDocumentRequest,
+) -> BatchConvertSourcesRequest:
+    """Build the REST batch request model so policy validation is shared.
+
+    Unlike the convert/chunk RPCs, batch goes through the Pydantic request
+    model: ``BatchConvertSourcesRequest`` rejects inline sources and in-body
+    targets itself, which is exactly the REST contract.
+    """
+    data: dict[str, object] = {
+        "sources": to_task_sources(proto.sources),
+        "options": to_convert_options(
+            proto.options if proto.HasField("options") else None
+        ),
+    }
+    if proto.HasField("target"):
+        data["target"] = to_task_target(proto.target)
+    if proto.targets:
+        data["targets"] = [to_task_target(t) for t in proto.targets]
+    if proto.callbacks:
+        data["callbacks"] = to_callbacks(proto.callbacks)
+    return BatchConvertSourcesRequest.model_validate(data)
 
 
 def requested_output_formats(
@@ -969,6 +1104,19 @@ def to_convert_options(
             proto_options.pdf_heading_hierarchy_options
         )
 
+    if proto_options.HasField("chunking_preset"):
+        data["chunking_preset"] = proto_options.chunking_preset
+
+    chunking_arm = proto_options.WhichOneof("chunking_options")
+    if chunking_arm == "hierarchical_chunking":
+        data["chunking_options"] = to_hierarchical_chunk_options(
+            proto_options.hierarchical_chunking
+        )
+    elif chunking_arm == "hybrid_chunking":
+        data["chunking_options"] = to_hybrid_chunk_options(
+            proto_options.hybrid_chunking
+        )
+
     known = set(ConvertDocumentsRequestOptions.model_fields)
     return ConvertDocumentsRequestOptions.model_validate(
         {key: value for key, value in data.items() if key in known}
@@ -1107,11 +1255,162 @@ def _error_item_to_proto(error) -> docling_serve_types_pb2.ErrorItem:
         message.component_type_raw = component
     else:
         message.component_type = enum_val
+    # ErrorItem.category / page_no were added upstream in docling; older
+    # engines may still emit items without them.
+    category = getattr(error, "category", None)
+    if category is not None:
+        message.category, category_raw = _enum_and_raw(
+            category, _FAILURE_CATEGORY_TO_PROTO
+        )
+        if category_raw is not None:
+            message.category_raw = category_raw
+    page_no = getattr(error, "page_no", None)
+    if page_no is not None:
+        message.page_no = page_no
     return message
 
 
 def _timings_to_proto(timings: dict[str, ProfilingItem]) -> dict[str, float]:
     return {key: item.total() for key, item in timings.items()}
+
+
+def _enum_and_raw(
+    value: enum.Enum | str, mapping: dict[str, int]
+) -> tuple[int, Optional[str]]:
+    """Generic *_raw contract: known value -> enum tag; unknown -> (0, raw)."""
+    text = str(value.value if isinstance(value, enum.Enum) else value)
+    tag = mapping.get(text)
+    if tag is None:
+        return 0, text
+    return tag, None
+
+
+_QUALITY_GRADE_TO_PROTO = {
+    QualityGrade.POOR.value: docling_serve_types_pb2.QualityGrade.QUALITY_GRADE_POOR,
+    QualityGrade.FAIR.value: docling_serve_types_pb2.QualityGrade.QUALITY_GRADE_FAIR,
+    QualityGrade.GOOD.value: docling_serve_types_pb2.QualityGrade.QUALITY_GRADE_GOOD,
+    QualityGrade.EXCELLENT.value: (
+        docling_serve_types_pb2.QualityGrade.QUALITY_GRADE_EXCELLENT
+    ),
+    # Pydantic's explicit "unspecified" member is the proto zero value.
+    QualityGrade.UNSPECIFIED.value: (
+        docling_serve_types_pb2.QualityGrade.QUALITY_GRADE_UNSPECIFIED
+    ),
+}
+
+_FAILURE_CATEGORY_TO_PROTO = {
+    member.value: getattr(
+        docling_serve_types_pb2.FailureCategory, f"FAILURE_CATEGORY_{member.name}"
+    )
+    for member in FailureCategory
+}
+
+_FAILURE_PHASE_TO_PROTO = {
+    member.value: getattr(
+        docling_serve_types_pb2.FailurePhase, f"FAILURE_PHASE_{member.name}"
+    )
+    for member in FailurePhase
+}
+
+_ARTIFACT_TYPE_TO_PROTO = {
+    "json": docling_serve_types_pb2.ArtifactType.ARTIFACT_TYPE_JSON,
+    "html": docling_serve_types_pb2.ArtifactType.ARTIFACT_TYPE_HTML,
+    "markdown": docling_serve_types_pb2.ArtifactType.ARTIFACT_TYPE_MARKDOWN,
+    "text": docling_serve_types_pb2.ArtifactType.ARTIFACT_TYPE_TEXT,
+    "doctags": docling_serve_types_pb2.ArtifactType.ARTIFACT_TYPE_DOCTAGS,
+    "doclang": docling_serve_types_pb2.ArtifactType.ARTIFACT_TYPE_DOCLANG,
+    "dclx": docling_serve_types_pb2.ArtifactType.ARTIFACT_TYPE_DCLX,
+    "resource_bundle": (
+        docling_serve_types_pb2.ArtifactType.ARTIFACT_TYPE_RESOURCE_BUNDLE
+    ),
+}
+
+_TASK_TYPE_TO_PROTO = {
+    TaskType.CONVERT.value: docling_serve_types_pb2.TaskType.TASK_TYPE_CONVERT,
+    TaskType.CHUNK.value: docling_serve_types_pb2.TaskType.TASK_TYPE_CHUNK,
+}
+
+
+def confidence_to_proto(
+    scores: ConfidenceScores,
+) -> docling_serve_types_pb2.ConfidenceScores:
+    message = docling_serve_types_pb2.ConfidenceScores()
+    for name in (
+        "parse_score",
+        "layout_score",
+        "table_score",
+        "ocr_score",
+        "mean_score",
+        "low_score",
+    ):
+        value = getattr(scores, name)
+        if value is not None:
+            setattr(message, name, value)
+    message.mean_grade, mean_raw = _enum_and_raw(
+        scores.mean_grade, _QUALITY_GRADE_TO_PROTO
+    )
+    if mean_raw is not None:
+        message.mean_grade_raw = mean_raw
+    message.low_grade, low_raw = _enum_and_raw(
+        scores.low_grade, _QUALITY_GRADE_TO_PROTO
+    )
+    if low_raw is not None:
+        message.low_grade_raw = low_raw
+    return message
+
+
+def public_failure_to_proto(
+    failure: PublicFailureInfo,
+) -> docling_serve_types_pb2.PublicFailureInfo:
+    message = docling_serve_types_pb2.PublicFailureInfo(
+        message=failure.message,
+        retryable=failure.retryable,
+        details=dict(failure.details),
+    )
+    message.category, category_raw = _enum_and_raw(
+        failure.category, _FAILURE_CATEGORY_TO_PROTO
+    )
+    if category_raw is not None:
+        message.category_raw = category_raw
+    message.phase, phase_raw = _enum_and_raw(failure.phase, _FAILURE_PHASE_TO_PROTO)
+    if phase_raw is not None:
+        message.phase_raw = phase_raw
+    return message
+
+
+def artifact_ref_to_proto(ref: ArtifactRef) -> docling_serve_types_pb2.ArtifactRef:
+    message = docling_serve_types_pb2.ArtifactRef(
+        mime_type=ref.mime_type,
+        uri=str(ref.uri),
+    )
+    message.artifact_type, raw = _enum_and_raw(
+        ref.artifact_type, _ARTIFACT_TYPE_TO_PROTO
+    )
+    if raw is not None:
+        message.artifact_type_raw = raw
+    if ref.url_expires_at is not None:
+        message.url_expires_at = ref.url_expires_at.isoformat()
+    return message
+
+
+def document_artifact_item_to_proto(
+    item: DocumentArtifactItem,
+) -> docling_serve_types_pb2.DocumentArtifactItem:
+    status_enum, status_raw = _conversion_status_enum_and_raw(item.status)
+    message = docling_serve_types_pb2.DocumentArtifactItem(
+        source_index=item.source_index,
+        source_uri=item.source_uri,
+        filename=item.filename,
+        status=status_enum,
+        errors=[_error_item_to_proto(err) for err in item.errors],
+        timings=_timings_to_proto(item.timings),
+        artifacts=[artifact_ref_to_proto(ref) for ref in item.artifacts],
+    )
+    if status_raw is not None:
+        message.status_raw = status_raw
+    if item.confidence is not None:
+        message.confidence.CopyFrom(confidence_to_proto(item.confidence))
+    return message
 
 
 def _build_exports(
@@ -1139,19 +1438,16 @@ def _build_exports(
     if wants(OutputFormat.DOCTAGS) and doc.doctags_content is not None:
         exports.doctags = doc.doctags_content
         has_any = True
-    if wants(OutputFormat.DOCLANG) and getattr(doc, "doclang_content", None) is not None:
+    if wants(OutputFormat.DOCLANG) and doc.doclang_content is not None:
         exports.doclang = doc.doclang_content
         has_any = True
-    latex_fmt = getattr(OutputFormat, "LATEX", None)
-    if latex_fmt is not None and wants(latex_fmt):
-        latex = getattr(doc, "latex_content", None)
-        if latex is None and doc.json_content is not None:
-            from docling_core.transforms.serializer.latex import LaTeXDocSerializer
+    # ExportDocumentResponse has no latex_content slot (jobkit 3.5); REST
+    # serializes LaTeX on demand from the DoclingDocument, and so do we.
+    if wants(OutputFormat.LATEX) and doc.json_content is not None:
+        from docling_core.transforms.serializer.latex import LaTeXDocSerializer
 
-            latex = LaTeXDocSerializer(doc=doc.json_content).serialize().text
-        if latex is not None:
-            exports.latex = latex
-            has_any = True
+        exports.latex = LaTeXDocSerializer(doc=doc.json_content).serialize().text
+        has_any = True
 
     return exports if has_any else None
 
@@ -1185,13 +1481,13 @@ def document_response_to_proto(
 
 
 def convert_result_to_proto(
-    result,
+    result: DocumentResultItem,
     processing_time: float,
     requested_formats: Optional[set[OutputFormat]] = None,
 ) -> docling_serve_types_pb2.ConvertDocumentResponse:
     status_enum, status_raw = _conversion_status_enum_and_raw(result.status)
     response = docling_serve_types_pb2.ConvertDocumentResponse(
-        document=document_response_to_proto(result.content, requested_formats),
+        document=document_response_to_proto(result.document, requested_formats),
         errors=[_error_item_to_proto(err) for err in result.errors],
         processing_time=processing_time,
         status=status_enum,
@@ -1199,11 +1495,107 @@ def convert_result_to_proto(
     )
     if status_raw is not None:
         response.status_raw = status_raw
+    if result.confidence is not None:
+        response.confidence.CopyFrom(confidence_to_proto(result.confidence))
     return response
 
 
+def zip_result_to_proto(
+    result: ZipArchiveResult,
+) -> docling_serve_types_pb2.ZipArchiveResult:
+    return docling_serve_types_pb2.ZipArchiveResult(content=result.content)
+
+
+def remote_target_result_to_proto(
+    task_result: DoclingTaskResult,
+) -> docling_serve_types_pb2.RemoteTargetResult:
+    return docling_serve_types_pb2.RemoteTargetResult(
+        processing_time=task_result.processing_time,
+        num_converted=task_result.num_converted,
+        num_succeeded=task_result.num_succeeded,
+        num_partially_succeeded=task_result.num_partially_succeeded,
+        num_failed=task_result.num_failed,
+    )
+
+
+def presigned_result_to_proto(
+    task_result: DoclingTaskResult,
+) -> docling_serve_types_pb2.PresignedArtifactResult:
+    result = task_result.result
+    assert isinstance(result, PresignedArtifactResult)
+    return docling_serve_types_pb2.PresignedArtifactResult(
+        processing_time=task_result.processing_time,
+        num_converted=task_result.num_converted,
+        num_succeeded=task_result.num_succeeded,
+        num_partially_succeeded=task_result.num_partially_succeeded,
+        num_failed=task_result.num_failed,
+        documents=[document_artifact_item_to_proto(item) for item in result.documents],
+    )
+
+
+def task_failure_to_proto(
+    failure: PublicFailureInfo,
+) -> docling_serve_types_pb2.TaskFailureResult:
+    return docling_serve_types_pb2.TaskFailureResult(
+        failure=public_failure_to_proto(failure)
+    )
+
+
+class UnexpectedResultType(TypeError):
+    """The orchestrator produced a result arm this RPC cannot carry."""
+
+
+def set_convert_result(
+    message,
+    task_result: DoclingTaskResult,
+    requested_formats: Optional[set[OutputFormat]] = None,
+) -> None:
+    """Fill the convert result oneof on any wrapper that declares it.
+
+    ``message`` is ConvertSourceResponse / GetConvertResultResponse /
+    ConvertSourceStreamResponse; they share the arm names. Dispatch mirrors
+    ``docling_serve.response_preparation.prepare_response``.
+    """
+    result = task_result.result
+    if isinstance(result, DocumentResultItem):
+        message.response.CopyFrom(
+            convert_result_to_proto(
+                result, task_result.processing_time, requested_formats
+            )
+        )
+    elif isinstance(result, ZipArchiveResult):
+        message.zip_archive.CopyFrom(zip_result_to_proto(result))
+    elif isinstance(result, RemoteTargetResult):
+        message.remote_target.CopyFrom(remote_target_result_to_proto(task_result))
+    elif isinstance(result, PresignedArtifactResult):
+        message.presigned_artifacts.CopyFrom(presigned_result_to_proto(task_result))
+    else:
+        raise UnexpectedResultType(
+            f"Convert task produced {type(result).__name__}; expected a convert result."
+        )
+
+
+def set_chunk_result(
+    message,
+    task_result: DoclingTaskResult,
+    requested_formats: Optional[set[OutputFormat]] = None,
+) -> None:
+    """Fill the chunk result oneof (ChunkDocumentResponse | TaskFailureResult)."""
+    result = task_result.result
+    if isinstance(result, ChunkedDocumentResult):
+        message.response.CopyFrom(
+            chunk_result_to_proto(
+                result, task_result.processing_time, requested_formats
+            )
+        )
+    else:
+        raise UnexpectedResultType(
+            f"Chunk task produced {type(result).__name__}; expected a chunk result."
+        )
+
+
 def chunk_result_to_proto(
-    result,
+    result: ChunkedDocumentResult,
     processing_time: float,
     requested_formats: Optional[set[OutputFormat]] = None,
 ) -> docling_serve_types_pb2.ChunkDocumentResponse:
@@ -1217,7 +1609,7 @@ def chunk_result_to_proto(
             captions=chunk.captions or [],
             doc_items=chunk.doc_items or [],
             page_numbers=chunk.page_numbers or [],
-            metadata={k: str(v) for k, v in (chunk.metadata or {}).items()},
+            metadata=_dict_to_scalar_map(chunk.metadata),
         )
         if chunk.raw_text is not None:
             message.raw_text = chunk.raw_text
@@ -1230,12 +1622,15 @@ def chunk_result_to_proto(
         status_enum, status_raw = _conversion_status_enum_and_raw(doc.status)
         document = docling_serve_types_pb2.Document(
             kind=doc.kind,
-            content=export_document_to_proto(doc.content, requested_formats),
+            content=export_document_to_proto(doc.document, requested_formats),
             status=status_enum,
             errors=[_error_item_to_proto(err) for err in doc.errors],
+            timings=_timings_to_proto(doc.timings),
         )
         if status_raw is not None:
             document.status_raw = status_raw
+        if doc.confidence is not None:
+            document.confidence.CopyFrom(confidence_to_proto(doc.confidence))
         documents.append(document)
 
     return docling_serve_types_pb2.ChunkDocumentResponse(
@@ -1245,32 +1640,72 @@ def chunk_result_to_proto(
     )
 
 
+def task_meta_to_proto(
+    meta: TaskProcessingMeta,
+) -> docling_serve_types_pb2.TaskStatusMetadata:
+    return docling_serve_types_pb2.TaskStatusMetadata(
+        num_docs=meta.num_docs,
+        num_processed=meta.num_processed,
+        num_succeeded=meta.num_succeeded,
+        num_partially_succeeded=meta.num_partially_succeeded,
+        num_failed=meta.num_failed,
+    )
+
+
 def task_status_to_proto(
     task: Task, position: Optional[int]
 ) -> docling_serve_types_pb2.TaskStatusPollResponse:
-    task_meta = None
-    if task.processing_meta is not None:
-        meta = task.processing_meta
-        if hasattr(meta, "model_dump"):
-            meta = meta.model_dump()
-        task_meta = docling_serve_types_pb2.TaskStatusMetadata(
-            num_docs=meta.get("num_docs", 0),
-            num_processed=meta.get("num_processed", 0),
-            num_succeeded=meta.get("num_succeeded", 0),
-            num_failed=meta.get("num_failed", 0),
-        )
-    task_type = task.task_type
-    if hasattr(task_type, "value"):
-        task_type = task_type.value
     response = docling_serve_types_pb2.TaskStatusPollResponse(
         task_id=task.task_id,
-        task_type=str(task_type) if task_type is not None else "",
         task_status=_task_status_enum(task.task_status),
-        task_meta=task_meta,
     )
+    response.task_type, task_type_raw = _enum_and_raw(
+        task.task_type, _TASK_TYPE_TO_PROTO
+    )
+    if task_type_raw is not None:
+        response.task_type_raw = task_type_raw
+    if task.processing_meta is not None:
+        response.task_meta.CopyFrom(task_meta_to_proto(task.processing_meta))
     if position is not None:
         response.task_position = position
+    if task.error_message is not None:
+        response.error_message = task.error_message
+    if task.failure is not None:
+        response.failure.CopyFrom(public_failure_to_proto(task.failure))
     return response
+
+
+# -------------------- Progress kinds (stream envelope) --------------------
+
+
+def progress_set_num_docs(num_docs: int) -> docling_serve_types_pb2.TaskProgress:
+    return docling_serve_types_pb2.TaskProgress(
+        set_num_docs=docling_serve_types_pb2.ProgressSetNumDocs(num_docs=num_docs)
+    )
+
+
+def progress_update_processed(
+    meta: TaskProcessingMeta,
+) -> docling_serve_types_pb2.TaskProgress:
+    # ``docs`` stays empty: the orchestrator's TaskProcessingMeta carries
+    # counters only; per-source items arrive through callbacks (Phase 2).
+    return docling_serve_types_pb2.TaskProgress(
+        update_processed=docling_serve_types_pb2.ProgressUpdateProcessed(
+            num_processed=meta.num_processed,
+            num_succeeded=meta.num_succeeded,
+            num_partially_succeeded=meta.num_partially_succeeded,
+            num_failed=meta.num_failed,
+        )
+    )
+
+
+def progress_task_completed(task: Task) -> docling_serve_types_pb2.TaskProgress:
+    completed = docling_serve_types_pb2.ProgressTaskCompleted(
+        task_status=_task_status_enum(task.task_status)
+    )
+    if task.failure is not None:
+        completed.failure.CopyFrom(public_failure_to_proto(task.failure))
+    return docling_serve_types_pb2.TaskProgress(task_completed=completed)
 
 
 def _task_status_enum(status: TaskStatus | str) -> int:

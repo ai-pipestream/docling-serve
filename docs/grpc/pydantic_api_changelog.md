@@ -105,11 +105,43 @@ proto already carried everything on those models, including the
 | `PdfDestinationKind`, `PdfDestination`, `PdfTableOfContents.destination` | additive | core (parse layer) | No proto change. These live on `ParsedPdfDocument`, which is not carried on the gRPC document wire. The fork's `DoclingDocument.outline` (`OutlineEntry`, field 18) is a separate concept and unchanged. |
 | Chandra-OCR MLX minimum-version gate | runtime only | engine | None. Not a `VlmModelType` value. |
 
+## 2026-09-05 — response-side parity (docling-serve 1.32 REST surface)
+
+This pass closes the gap between what the REST client can receive and what
+the gRPC wire could express. Everything below mirrors an existing Pydantic
+response/request model; nothing here is fork-invented. Wire-breaking changes
+are marked; the previous tags are `reserved` in the IDL.
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| `GET /v1/result` returns a union: `ConvertDocumentResponse` / `ZipArchiveResult` / `PresignedUrlConvertDocumentResponse` (`RemoteTargetResult`) / `PresignedUrlConvertResponse` (`PresignedArtifactResult`) / `TaskFailureResult` | **breaking** (wire) | serve | `ConvertSourceResponse`, `ConvertSourceStreamResponse`, `GetConvertResultResponse` gained `oneof result { response = 1; zip_archive = 2; remote_target = 3; presigned_artifacts = 4; failure = 5; }`. `ChunkHierarchicalSourceResponse`, `ChunkHybridSourceResponse`, `GetChunkResultResponse`: `oneof result { response = 1; failure = 2; }`. The `response` arm keeps tag 1, so existing clients reading `.response.document` are unaffected. Server dispatches on the `DoclingTaskResult.result` type (`set_convert_result` / `set_chunk_result`); an unexpected member aborts `FAILED_PRECONDITION`. |
+| `ConfidenceScores` (`parse_score`, `layout_score`, `table_score`, `ocr_score`, `mean_score`, `low_score`, `mean_grade`, `low_grade`) on `DocumentResultItem`, `ConvertDocumentResponse`, `DocumentArtifactItem` | additive | serve | New `ConfidenceScores` message; `QualityGrade` closed enum (+ `mean_grade_raw`, `low_grade_raw`). `ConvertDocumentResponse.confidence = 7`, `Document.confidence = 7`, `DocumentArtifactItem.confidence = 8`. |
+| `PublicFailureInfo` (`category`, `message`, `retryable`, `phase`, `details`) | additive | serve | New message; `FailureCategory` and `FailurePhase` closed enums (+ `*_raw`). Carried by `TaskFailureResult.failure`, `TaskStatusPollResponse.failure = 9`, `ProgressTaskCompleted.failure`, `StreamError.failure = 5`. |
+| `ArtifactRef` (`artifact_type`, `mime_type`, `uri`, `url_expires_at`) and `DocumentArtifactItem` (`source_index`, `source_uri`, `filename`, `status`, `errors`, `timings`, `artifacts`, `confidence`) | additive | serve | New messages. `ArtifactType` closed enum (+ `artifact_type_raw`); `url_expires_at` is ISO-8601 (`optional string`). |
+| `ErrorItem.category: FailureCategory`, `ErrorItem.page_no: int | None` | additive | engine | `ErrorItem.category = 5`, `category_raw = 6`, `page_no = 7`. |
+| `DocumentResultItem.timings` | additive (was missing on the per-document proto) | serve | `Document.timings = 6` (`map<string, double>`, `ProfilingItem.total()` — same convention as `ConvertDocumentResponse.timings`). |
+| `TaskStatusResponse.error_message`, `.failure`, `TaskProcessingMeta.num_partially_succeeded` | additive | jobkit/serve | `TaskStatusPollResponse.error_message = 8`, `.failure = 9`; `TaskStatusMetadata.num_partially_succeeded = 5`; `StreamStatus.num_partially_succeeded = 9`. |
+| `TaskStatusResponse.task_type` is the `TaskType` enum | tightened | jobkit | `string task_type = 2` → `reserved 2`; `TaskType task_type = 6` + `task_type_raw = 7`. **Breaking** for clients comparing the old string. |
+| `ConvertDocumentsRequest.callbacks: list[CallbackSpec]` (`url`, `headers`, `ca_cert`), also on chunk requests and batch | additive | serve | New `CallbackSpec` message; `ConvertDocumentRequest.callbacks = 4`, `HierarchicalChunkRequest.callbacks = 6`, `HybridChunkRequest.callbacks = 6`, `BatchConvertDocumentRequest.callbacks = 5`. Policy `callbacks_enabled=False` rejects with `INVALID_ARGUMENT` exactly like REST 422. |
+| `ConvertDocumentsRequestOptions.chunking_preset`, `chunking_options: HybridChunkerOptions | HierarchicalChunkerOptions` | additive | serve | `ConvertDocumentOptions.chunking_preset = 48`; `oneof chunking_options { hierarchical_chunking = 49; hybrid_chunking = 50; }`. Mutual exclusion is enforced by the Pydantic validator and surfaces as `INVALID_ARGUMENT`. |
+| `ChunkedDocumentResultItem.metadata: dict | None` (holds `DocumentOrigin`, whose `binary_hash` is `uint64`) | tightened | jobkit | `map<string, string> metadata = 10` → `reserved 10`; `map<string, ScalarValue> metadata = 11`, flattened with dotted keys. `ScalarValue.uint_value = 5` added so `binary_hash` does not overflow `int64`. **Breaking** for clients reading tag 10. |
+| `POST /v1/convert/source/batch` (`BatchConvertSourcesRequest`: `sources`, `target`, `targets`, `options`, `callbacks`) and plugin `GenericTargetRequest` | additive | serve | `rpc ConvertSourceBatch`; `BatchConvertDocumentRequest`; `Target.generic = 9` (`GenericTarget { kind; map<string, ScalarValue> attributes }`). Goes through the REST Pydantic model + `validate_batch_convert_request`, so batch rules (no inline sources, no in-body target, max sources) are shared. |
+| `ProgressCallbackRequest.progress` union (`set_num_docs`, `update_processed`, `document_completed`, `task_completed`) | additive | serve | `TaskProgress` oneof with the same arm names; `ProcessedDocsItem`, `DocumentCompletedItem` typed. Emitted on `StreamDocumentResponse.progress = 15`. `document_completed` is declared but not yet emitted (needs per-source hooks). |
+| — | fork cleanup | — | `StreamError.code` free string (tag 1) → `reserved 1`; `StreamErrorCode code = 4` closed enum. `RedisBackpressureError` → `RESOURCE_EXHAUSTED` (REST 503). Dead `OutputFormat.LATEX` guard removed. Orchestrators that only record failure on the task (local) now yield the `failure` arm instead of `NOT_FOUND`. |
+
 Schema version has stayed at **1.10.0** for the whole window; no
 `DoclingDocument` structural change has required a proto field since the
 baseline.
 
 ## Not yet accommodated
+
+- `timings` values are `ProfilingItem.total()` seconds (`map<string, double>`)
+  rather than the full `ProfilingItem` (`scope`, `count`, `times`,
+  `start_timestamps`) REST returns. Making it a typed message is a wire
+  change on `ConvertDocumentResponse.timings = 5`; deferred.
+- `TaskStatusResponse.task_status` is typed as `ConversionStatus` upstream
+  while `Task.task_status` is `TaskStatus`; the proto keeps `TaskStatus`
+  (identical string vocabulary for the four states used).
 
 - `docling-slim >= 2.125` cannot be locked in docling-serve: `docling-jobkit`
   3.5's `models-vlm-inline` extra pulls `mlx-vlm >= 0.6.17`, which requires

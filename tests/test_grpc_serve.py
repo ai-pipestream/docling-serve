@@ -239,7 +239,7 @@ async def test_convert_source_async(grpc_stub):
     # Verify we got a valid task ID
     assert len(response.response.task_id) > 0
     # Verify task type is set
-    assert response.response.task_type == "convert"
+    assert response.response.task_type == docling_serve_types_pb2.TASK_TYPE_CONVERT
     # Verify status is a valid enum value (1 = PENDING)
     assert response.response.task_status >= 0
 
