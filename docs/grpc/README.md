@@ -168,4 +168,4 @@ At startup, the gRPC server validates that the `DoclingDocument` protobuf defini
 
 ## Keeping In Sync With Upstream
 
-While the gRPC PRs are open against `docling-core` and `docling-serve`, both branches need to be re-merged with `main` regularly and the proto/mapping layer needs to be checked for drift. The full procedure — including how to use the schema validator and the test suites to surface upstream changes mechanically — is in [upstream_sync_procedure.md](upstream_sync_procedure.md).
+While the gRPC PRs are open against `docling-core` and `docling-serve`, both branches need to be re-merged with `main` regularly and the proto/mapping layer needs to be checked for drift. The full procedure — including how to use the schema validator and the test suites to surface upstream changes mechanically — is in [upstream_sync_procedure.md](upstream_sync_procedure.md). The running record of upstream Pydantic changes and the proto tag or message that absorbed each one is [pydantic_api_changelog.md](pydantic_api_changelog.md).

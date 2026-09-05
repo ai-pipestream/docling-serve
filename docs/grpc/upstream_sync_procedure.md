@@ -93,7 +93,7 @@ This is where upstream drift surfaces.
 
 ```sh
 # docling-core: proto + Pydantic round-trip
-uv run pytest test/test_proto_conversion.py -q
+uv run pytest tests/test_proto_conversion.py -q
 
 # docling-serve: schema validator + mapping + converter
 uv run pytest \
@@ -162,6 +162,18 @@ fields with the next available field number, regenerate stubs, wire
 them into `to_convert_options` in `docling_serve/grpc/mapping.py`, and
 add a focused test in `tests/test_grpc_mapping.py`.
 
+Engine enums referenced by the options (`InputFormat`, `OutputFormat`,
+`PdfBackend`, `ProcessingPipeline`, `VlmModelType`, `ConversionStatus`,
+`DoclingComponentType`) each have a `test_*_proto_covers_pydantic` drift
+guard, so a new upstream member fails the mapping suite rather than
+needing a manual diff.
+
+### 5b. Record the change
+
+Every additive or breaking Pydantic change you accommodate goes in
+[`pydantic_api_changelog.md`](pydantic_api_changelog.md): what changed,
+which layer, and the proto tag or message that absorbed it.
+
 ### 6. Re-run all tests, then commit
 
 Re-run step 4 to confirm green, then commit each logical change as its
@@ -188,7 +200,7 @@ When the validator surfaces a missing field, the workflow is:
    `_to_doc_item_label_enum_and_raw`). Wire it from the parent
    converter (e.g. `_to_picture_meta`).
 4. **Regenerate** with `scripts/gen_proto.py` then `scripts/gen_grpc.py`.
-5. **Add tests** in `test/test_proto_conversion.py` (core) covering the
+5. **Add tests** in `tests/test_proto_conversion.py` (core) covering the
   new field and the unknown-enum fallback if applicable. The serve
    schema validator test will then automatically pass.
 
