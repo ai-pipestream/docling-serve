@@ -129,6 +129,16 @@ are marked; the previous tags are `reserved` in the IDL.
 | `ProgressCallbackRequest.progress` union (`set_num_docs`, `update_processed`, `document_completed`, `task_completed`) | additive | serve | `TaskProgress` oneof with the same arm names; `ProcessedDocsItem`, `DocumentCompletedItem` typed. Emitted on `StreamDocumentResponse.progress = 15`. `document_completed` is declared but not yet emitted (needs per-source hooks). |
 | — | fork cleanup | — | `StreamError.code` free string (tag 1) → `reserved 1`; `StreamErrorCode code = 4` closed enum. `RedisBackpressureError` → `RESOURCE_EXHAUSTED` (REST 503). Dead `OutputFormat.LATEX` guard removed. Orchestrators that only record failure on the task (local) now yield the `failure` arm instead of `NOT_FOUND`. |
 
+## 2026-09-13 — docling-core 2.96 (docling-serve upstream unchanged since 1.32)
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| `DocumentOrigin.mimetype` allowlist gained `application/vnd.apple.pages`, `.numbers`, `.keynote`, `application/x-iwork-*-sff*`, `application/x-afp`, `application/vnd.ibm.modcap`, `application/x-mimearchive`, `multipart/related` | additive (validation) | core | No proto change; `mimetype` is a free string on the wire. Producers (gRParse) may now emit these without the Pydantic side rejecting the document. |
+| Markdown table header rows derived from `column_header` on cells whose `start_row_offset_idx == row_idx`, so rows under spanning column headers are kept as body rows | behavioural (serializer) | core | No wire change; affects `DocumentExports.markdown` and any independent Markdown renderer that wants byte parity. |
+| PNG page/picture images encoded at OpenCV compression level 6 (matches PIL) | behavioural | core | No wire change; `ImageRef.uri` payloads shrink. |
+| `DOCLINGCORE_ALLOWED_PRIVATE_IPS` allowlist for URL fetches | additive (settings) | core | None; server configuration. |
+| WebVTT signature accepts a CR terminator | behavioural | core | None. |
+
 Schema version has stayed at **1.10.0** for the whole window; no
 `DoclingDocument` structural change has required a proto field since the
 baseline.
