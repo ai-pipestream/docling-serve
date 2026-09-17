@@ -16,13 +16,13 @@ Living checklist for the scheduled parity duty. Update when a sync arrives.
 | Forgejo parser-family dep PRs | **0 open** (module-parser #70 docling-testcontainers 0.6.1→0.6.6 merged) |
 | docling-core `feat/add-protobuf` | At **2.97.0**; `upstream/main` is ancestor (fork ahead with protobuf). |
 | docling-serve `grpc-native-converter` | Content at **1.33.0** (S3 region settings included). Git ancestry still diverges from `upstream/main` (ours-merge blocked by AI-trailer pre-push on upstream commits). |
-| gRParse Convert options (recent) | Enrich path honors picture description, code/formula, chart extraction; nested `picture_description_local` / `api` accepted (repo_id→preset_raw, url→vlm_endpoint, timeout/concurrency). Docker tests pending this slice. |
+| gRParse Convert options (recent) | Enrich path + nested picture_description_local/api; VLM selection fields and empty `*_custom_config` Structs accepted (non-empty keys rejected). Docker **81/81**. `PROCESSING_PIPELINE_VLM` still rejected pending grpc-vlm-convert dial. |
 | Monday Automation | Draft reopened — **must Save/Enable**. |
 
 ## Next agent actions
 
 1. Confirm Monday Automation is saved and enabled.
 2. Forgejo dep sweep each cycle.
-3. Remaining Convert options: VLM pipeline selection (grpc-vlm-convert dial), custom_* Struct configs, serve-aligned classification_* on picture description engines.
+3. Remaining: dial PROCESSING_PIPELINE_VLM via grpc-vlm-convert; honor non-empty custom_* / classification_* on picture engines.
 4. Streaming `page_range` if DocumentChunk ever carries the field.
 5. Optional: rewrite/re-sync serve history so `upstream/main` is a true merge parent without pushing AI-attributed upstream messages through the hook.
