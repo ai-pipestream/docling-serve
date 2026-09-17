@@ -18,7 +18,7 @@ Living checklist for the scheduled parity duty. Update when a sync lands.
 | `DOCLING_SERVE_ARTIFACT_STORAGE_REGION` | Settings-only; wired via `orchestrator_factory`. |
 | `InputFormat` serve | RTF/MHTML added earlier this cycle. |
 | `InputFormat` gRParse | Tags **18–33** now match serve (DOC…EBCDIC + RTF/MHTML). Proto committed; C++ stubs regenerate on next successful cmake build. |
-| Chunker `use_markdown_images` / `image_placeholder` | Proto fields present; C++ exporters not consuming yet. |
+| Chunker `use_markdown_images` / `image_placeholder` | **Implemented** in gRParse chunker (+ unit test); default placeholder `![IMAGE]` matches jobkit. |
 | Convert-side `chunking_preset` | Serve has it; gRParse uses dedicated chunk RPCs (intentional). |
 | Monday Automation | Draft reopened in Automations editor — **must Save/Enable**. |
 
