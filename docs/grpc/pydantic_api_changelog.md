@@ -172,6 +172,12 @@ upstream so the VLM extras resolve.
 | `allowed_source_types` policy | additive (policy) | serve | Policy interceptor / settings — not a client Convert field. |
 | New input formats in docs (`rtf`, `mhtml`) | additive (docs/enum) | serve | `INPUT_FORMAT_RTF = 32`, `INPUT_FORMAT_MHTML = 33` + mapping entries; covered by `test_input_format_proto_covers_pydantic`. |
 
+## 2026-09-17 — InputFormat.AFP on the Convert wire
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| `InputFormat.AFP` (IBM AFP / MO:DCA; already on Pydantic / REST docs) | additive | engine | `INPUT_FORMAT_AFP = 34` + `_map_input_format` entry; drift guard `test_input_format_proto_covers_pydantic`. gRParse maps `application/x-afp` / `application/vnd.ibm.modcap` / `.afp` to the same tag (previously mis-tagged as EBCDIC). |
+
 ## Not yet accommodated
 
 - `timings` values are `ProfilingItem.total()` seconds (`map<string, double>`)
