@@ -20,11 +20,5 @@ Living checklist for the scheduled parity duty. Update when a sync lands.
 | `InputFormat` gRParse | Tags **18–33** now match serve (DOC…EBCDIC + RTF/MHTML). Proto committed; C++ stubs regenerate on next successful cmake build. |
 | Chunker `use_markdown_images` / `image_placeholder` | **Implemented** in gRParse chunker (+ unit test); default placeholder `![IMAGE]` matches jobkit. |
 | Convert-side `chunking_preset` | Serve has it; gRParse uses dedicated chunk RPCs (intentional). |
-| Monday Automation | Draft reopened in Automations editor — **must Save/Enable**. |
-
-## Next agent actions
-
-1. Confirm Monday Automation is saved and enabled.
-2. Forgejo dep sweep (`FORGEJO_PAT` @ `git.rokkon.com/ai-pipestream`).
-3. Fetch upstream; sync if new releases land.
-4. Optional: implement gRParse chunker markdown-image options; consume new InputFormat tags in from_formats filtering.
+| gRParse `from_formats` | **Implemented**: allowlisted in `validate_options`; after sniff, rejects inputs not in a non-empty list (`input_format.cpp` + unit test). |
+| Monday Automation | Draft reopened in Automations editor — **must Save/Enable** (cannot verify from agent). |
