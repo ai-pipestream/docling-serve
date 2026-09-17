@@ -164,7 +164,7 @@ upstream so the VLM extras resolve.
 
 | Change | Kind | Layer | Proto accommodation |
 | --- | --- | --- | --- |
-| S3 coordinates gain `region` | additive | serve / jobkit | Add optional `region` on the S3 source/target messages (or ScalarValue attrs) — **not yet on wire**; track for gRPC + gRParse target delivery. |
+| Managed artifact S3 gains `DOCLING_SERVE_ARTIFACT_STORAGE_REGION` (`artifact_storage_region`) | additive (settings) | serve | Server env only — not a Convert request field. No proto change; gRPC managed-artifact path should pass the setting through the same orchestrator factory hook REST uses. |
 | Azure Blob managed artifact storage + env knobs | additive (settings) | serve | Server config only for managed artifacts; request-side Azure source/target already partially present via jobkit — verify gRPC GenericSource/Target attrs cover Azure/GCS/GDrive plugins. |
 | `DOCLING_SERVE_ENG_RQ_JOB_TIMEOUT` | additive (settings) | serve | None on Convert RPCs; document as server env. |
 | Multipart form: omit defaulted fields so `model_fields_set` stays truthful; 422 on invalid options | behavioural | serve REST | gRPC already uses typed options; no change. |
