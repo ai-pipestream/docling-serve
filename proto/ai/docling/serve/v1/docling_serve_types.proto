@@ -777,6 +777,12 @@ message DocumentExports {
   optional string doclang = 6;
   // Docling >=2.124: LaTeX serialization of the converted document.
   optional string latex = 7;
+  // OutputFormat.YAML — DoclingDocument as YAML (same shape as save_as_yaml).
+  optional string yaml = 8;
+  // OutputFormat.VTT — WebVTT cues from track-timed text.
+  optional string vtt = 9;
+  // OutputFormat.HTML_SPLIT_PAGE — HTML with split_page_view=True.
+  optional string html_split_page = 10;
 }
 
 // DocumentResponse contains the converted document and optional exports.

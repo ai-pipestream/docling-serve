@@ -1445,12 +1445,32 @@ def _build_exports(
     if wants(OutputFormat.DOCLANG) and doc.doclang_content is not None:
         exports.doclang = doc.doclang_content
         has_any = True
-    # ExportDocumentResponse has no latex_content slot (jobkit 3.5); REST
-    # serializes LaTeX on demand from the DoclingDocument, and so do we.
+    # ExportDocumentResponse has no latex/yaml/vtt/html_split slots (jobkit
+    # in-body model); REST artifact targets write those formats to disk, and
+    # for in-body gRPC we serialize on demand from the DoclingDocument.
     if wants(OutputFormat.LATEX) and doc.json_content is not None:
         from docling_core.transforms.serializer.latex import LaTeXDocSerializer
 
         exports.latex = LaTeXDocSerializer(doc=doc.json_content).serialize().text
+        has_any = True
+    if wants(OutputFormat.YAML) and doc.json_content is not None:
+        from io import StringIO
+
+        import yaml
+
+        stream = StringIO()
+        yaml.dump(
+            doc.json_content.export_to_dict(),
+            stream,
+            default_flow_style=False,
+        )
+        exports.yaml = stream.getvalue()
+        has_any = True
+    if wants(OutputFormat.VTT) and doc.json_content is not None:
+        exports.vtt = doc.json_content.export_to_vtt()
+        has_any = True
+    if wants(OutputFormat.HTML_SPLIT_PAGE) and doc.json_content is not None:
+        exports.html_split_page = doc.json_content.export_to_html(split_page_view=True)
         has_any = True
 
     return exports if has_any else None

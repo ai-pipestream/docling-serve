@@ -404,6 +404,36 @@ def test_build_exports_doclang_and_latex():
         assert exports.HasField("latex")
 
 
+def test_build_exports_yaml_vtt_html_split_page():
+    from types import SimpleNamespace
+
+    from docling_core.types.doc.document import DoclingDocument
+
+    doc = DoclingDocument(name="n")
+    exports = _build_exports(
+        SimpleNamespace(
+            json_content=doc,
+            md_content=None,
+            html_content=None,
+            text_content=None,
+            doctags_content=None,
+            doclang_content=None,
+        ),
+        {
+            OutputFormat.YAML,
+            OutputFormat.VTT,
+            OutputFormat.HTML_SPLIT_PAGE,
+        },
+    )
+    assert exports is not None
+    assert exports.HasField("yaml")
+    assert "name: n" in exports.yaml or "n" in exports.yaml
+    assert exports.HasField("vtt")
+    assert exports.vtt.startswith("WEBVTT")
+    assert exports.HasField("html_split_page")
+    assert "<html" in exports.html_split_page.lower()
+
+
 def test_to_task_sources_and_target():
     sources = to_task_sources(
         [

@@ -184,6 +184,12 @@ upstream so the VLM extras resolve.
 | --- | --- | --- | --- |
 | `OcrEngine.TESSERACT_CLI` (`tesseract_cli`) | additive | engine | `OCR_ENGINE_TESSERACT_CLI = 7` + `_map_ocr_engine` → `"tesseract_cli"`; drift guard `test_ocr_engine_proto_covers_pydantic_enum_values`. Legacy `OCR_ENGINE_TESSEROCR = 5` kept for the `"tesserocr"` kind string. |
 
+## 2026-09-17 — DocumentExports YAML / VTT / HTML_SPLIT_PAGE
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| In-body YAML / VTT / HTML split-page exports (OutputFormat already on the request wire; jobkit in-body model has no slots) | additive | serve | `DocumentExports.yaml = 8`, `vtt = 9`, `html_split_page = 10`; `_build_exports` serializes on demand from `DoclingDocument` (`yaml.dump(export_to_dict())`, `export_to_vtt()`, `export_to_html(split_page_view=True)`), same pattern as LaTeX. |
+
 ## Not yet accommodated
 
 - `timings` values are `ProfilingItem.total()` seconds (`map<string, double>`)
