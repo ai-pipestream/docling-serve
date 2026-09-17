@@ -741,6 +741,26 @@ message ConfidenceScores {
   optional string low_grade_raw = 10;
 }
 
+// ProfilingScope mirrors docling.utils.profiling.ProfilingScope.
+enum ProfilingScope {
+  PROFILING_SCOPE_UNSPECIFIED = 0;
+  PROFILING_SCOPE_PAGE = 1;
+  PROFILING_SCOPE_DOCUMENT = 2;
+}
+
+// ProfilingItem mirrors docling.utils.profiling.ProfilingItem — the full
+// timing sample REST returns under ConvertDocumentResponse.timings values.
+// The parallel map<string, double> timings fields keep totals for older
+// clients; this map carries scope/count/samples when present.
+message ProfilingItem {
+  ProfilingScope scope = 1;
+  optional string scope_raw = 2;
+  int32 count = 3;
+  repeated double times = 4;
+  // ISO-8601 timestamps matching Pydantic's JSON mode for datetime.
+  repeated string start_timestamps = 5;
+}
+
 // ArtifactRef mirrors docling's ArtifactRef: one exported artifact reachable
 // through a (usually presigned) URI.
 message ArtifactRef {
@@ -765,6 +785,8 @@ message DocumentArtifactItem {
   repeated ArtifactRef artifacts = 7;
   optional ConfidenceScores confidence = 8;
   optional string status_raw = 9;
+  // Full ProfilingItem samples (additive; timings keeps totals).
+  map<string, ProfilingItem> profiling = 10;
 }
 
 // ============================================================================
@@ -822,6 +844,8 @@ message Document {
   // Per-document profiling totals (seconds), keyed by stage.
   map<string, double> timings = 6;
   optional ConfidenceScores confidence = 7;
+  // Full ProfilingItem samples (additive; timings keeps totals).
+  map<string, ProfilingItem> profiling = 8;
 }
 
 // ============================================================================
@@ -987,6 +1011,8 @@ message ConvertDocumentResponse {
   // conversion status vocabularies.
   optional string status_raw = 6;
   optional ConfidenceScores confidence = 7;
+  // Full ProfilingItem samples (additive; timings keeps totals).
+  map<string, ProfilingItem> profiling = 8;
 }
 
 // HierarchicalChunkerOptions configures the hierarchical chunker.

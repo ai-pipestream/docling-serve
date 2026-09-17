@@ -1467,6 +1467,48 @@ def test_confidence_scores_optional_fields_and_grades():
     assert not proto.HasField("low_grade_raw")
 
 
+def test_profiling_item_maps_full_samples_alongside_totals():
+    from datetime import datetime, timezone
+
+    from docling.datamodel.base_models import ConversionStatus
+    from docling.datamodel.service.responses import DocumentResultItem
+    from docling.utils.profiling import ProfilingItem, ProfilingScope
+    from types import SimpleNamespace
+
+    from docling_serve.grpc.mapping import convert_result_to_proto
+
+    timings = {
+        "pipeline_total": ProfilingItem(
+            scope=ProfilingScope.DOCUMENT,
+            count=2,
+            times=[0.1, 0.2],
+            start_timestamps=[datetime(2026, 1, 1, tzinfo=timezone.utc)],
+        )
+    }
+    result = DocumentResultItem.model_construct(
+        document=SimpleNamespace(
+            filename="f.pdf",
+            json_content=None,
+            md_content=None,
+            html_content=None,
+            text_content=None,
+            doctags_content=None,
+            doclang_content=None,
+        ),
+        status=ConversionStatus.SUCCESS,
+        errors=[],
+        timings=timings,
+        confidence=None,
+    )
+    proto = convert_result_to_proto(result, processing_time=0.3)
+    assert proto.timings["pipeline_total"] == pytest.approx(0.3)
+    item = proto.profiling["pipeline_total"]
+    assert item.scope == docling_serve_types_pb2.PROFILING_SCOPE_DOCUMENT
+    assert item.count == 2
+    assert list(item.times) == pytest.approx([0.1, 0.2])
+    assert item.start_timestamps == ["2026-01-01T00:00:00Z"]
+
+
 def test_public_failure_unknown_vocab_falls_back_to_raw():
     from docling.datamodel.service.responses import PublicFailureInfo
 

@@ -204,10 +204,6 @@ upstream so the VLM extras resolve.
 
 ## Not yet accommodated
 
-- `timings` values are `ProfilingItem.total()` seconds (`map<string, double>`)
-  rather than the full `ProfilingItem` (`scope`, `count`, `times`,
-  `start_timestamps`) REST returns. Making it a typed message is a wire
-  change on `ConvertDocumentResponse.timings = 5`; deferred.
 - `TaskStatusResponse.task_status` is typed as `ConversionStatus` upstream
   while `Task.task_status` is `TaskStatus`; the proto keeps `TaskStatus`
   (identical string vocabulary for the four states used).
@@ -217,3 +213,9 @@ upstream so the VLM extras resolve.
 | Change | Kind | Layer | Proto accommodation |
 | --- | --- | --- | --- |
 | `ProcessingPipeline.NATIVE` reachable on current lock (`docling-slim>=2.127` / engine 2.128) | additive (now live) | engine | Tag `PROCESSING_PIPELINE_NATIVE = 5` was reserved earlier; `_map_pipeline` resolves it via `getattr` and `to_convert_options` accepts it. Drift + positive mapping tests. |
+
+## 2026-09-17 — ProfilingItem on convert responses
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| REST `timings` values are full `ProfilingItem` (`scope`, `count`, `times`, `start_timestamps`) | additive | serve | New `ProfilingScope` + `ProfilingItem`; `ConvertDocumentResponse.profiling = 8`, `Document.profiling = 8`, `DocumentArtifactItem.profiling = 10`. Existing `map<string, double> timings` keeps totals for older clients. |

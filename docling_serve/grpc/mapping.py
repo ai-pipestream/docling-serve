@@ -1282,6 +1282,38 @@ def _timings_to_proto(timings: dict[str, ProfilingItem]) -> dict[str, float]:
     return {key: item.total() for key, item in timings.items()}
 
 
+def _profiling_item_to_proto(
+    item: ProfilingItem,
+) -> docling_serve_types_pb2.ProfilingItem:
+    scope_text = str(
+        item.scope.value if isinstance(item.scope, enum.Enum) else item.scope
+    )
+    scope_map = {
+        "page": docling_serve_types_pb2.ProfilingScope.PROFILING_SCOPE_PAGE,
+        "document": docling_serve_types_pb2.ProfilingScope.PROFILING_SCOPE_DOCUMENT,
+    }
+    scope_tag = scope_map.get(scope_text)
+    message = docling_serve_types_pb2.ProfilingItem(
+        count=int(item.count),
+        times=list(item.times or []),
+        start_timestamps=[
+            ts.isoformat().replace("+00:00", "Z") if hasattr(ts, "isoformat") else str(ts)
+            for ts in (item.start_timestamps or [])
+        ],
+    )
+    if scope_tag is not None:
+        message.scope = scope_tag
+    else:
+        message.scope_raw = scope_text
+    return message
+
+
+def _profiling_to_proto(
+    timings: dict[str, ProfilingItem],
+) -> dict[str, docling_serve_types_pb2.ProfilingItem]:
+    return {key: _profiling_item_to_proto(item) for key, item in timings.items()}
+
+
 def _enum_and_raw(
     value: enum.Enum | str, mapping: dict[str, int]
 ) -> tuple[int, Optional[str]]:
@@ -1412,6 +1444,7 @@ def document_artifact_item_to_proto(
         status=status_enum,
         errors=[_error_item_to_proto(err) for err in item.errors],
         timings=_timings_to_proto(item.timings),
+        profiling=_profiling_to_proto(item.timings),
         artifacts=[artifact_ref_to_proto(ref) for ref in item.artifacts],
     )
     if status_raw is not None:
@@ -1529,6 +1562,7 @@ def convert_result_to_proto(
         processing_time=processing_time,
         status=status_enum,
         timings=_timings_to_proto(result.timings),
+        profiling=_profiling_to_proto(result.timings),
     )
     if status_raw is not None:
         response.status_raw = status_raw
@@ -1663,6 +1697,7 @@ def chunk_result_to_proto(
             status=status_enum,
             errors=[_error_item_to_proto(err) for err in doc.errors],
             timings=_timings_to_proto(doc.timings),
+            profiling=_profiling_to_proto(doc.timings),
         )
         if status_raw is not None:
             document.status_raw = status_raw
