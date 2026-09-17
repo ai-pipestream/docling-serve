@@ -13,12 +13,19 @@ Living checklist for the scheduled parity duty. Update when a sync arrives.
 
 | Track | State |
 | --- | --- |
-| Forgejo parser-family dep PRs | **0 open** |
-| docling-core `feat/add-protobuf` | At **2.97.0**; `upstream/main` is ancestor. |
-| docling-serve `grpc-native-converter` | **yaml/vtt/html_split/dclx** exports + **S3Source/S3Target.region**. Ancestry still diverges from `upstream/main`. |
-| gRParse | **S3Source/S3Target.region** (explicit SigV4 region); AFP; TESSERACT_CLI; exports already on wire. |
-| Monday Automation | Draft in Glass — **must Save/Enable** (browser still hits Sign-in). |
-| Local Monday cron | Installed (`parity-duty-weekly`). |
+| Forgejo parser-family dep PRs | **0 open** (weekly script now covers pdfium/poppler/qparse/fastwarc/parser-protos/opennlp too) |
+| docling-core `feat/add-protobuf` | At **2.97.0**; `upstream/main` is ancestor (0 behind). |
+| docling-serve `grpc-native-converter` | Convert enums/options/settings match upstream tip content (**yaml/vtt/html_split/dclx**, **S3.region**, Ray metrics, artifact region). Git ancestry still diverges (35 commits). |
+| gRParse | **S3.region** + prior Convert parity; fleet-only: `canonical_json`/`gdocs_json`, collectors. |
+| Monday Automation | Draft open in Glass — **must Save/Enable** (auth required). |
+| Local Monday cron | Installed; script expanded to full collector family. |
+
+## Next agent actions
+
+1. Confirm Monday Automation is saved and enabled (user Sign-in in Automations UI).
+2. Forgejo dep sweep each cycle (script + rule list).
+3. Optional: rewrite/re-sync serve history so `upstream/main` is a true merge parent.
+4. Note: gRParse field tags 44+ are fleet-specific; serve chunking fields are at 48–50, gRParse at 52–54 (same names). `OUTPUT_FORMAT_CHUNKS` is enum 13 here (serve uses 11; 11 is GDOCS_JSON in gRParse). `OUTPUT_FORMAT_DCLX` is enum 14 here (serve uses 10; 10 is CANONICAL_JSON in gRParse).
 
 ## Next agent actions
 
