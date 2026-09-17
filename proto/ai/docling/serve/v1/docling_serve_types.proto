@@ -77,8 +77,12 @@ enum OcrEngine {
   OCR_ENGINE_EASYOCR = 2;
   OCR_ENGINE_OCRMAC = 3;
   OCR_ENGINE_RAPIDOCR = 4;
+  // Legacy kind string "tesserocr" (Python bindings). Prefer OCR_ENGINE_TESSERACT
+  // for the Pydantic OcrEngine.TESSERACT value ("tesseract").
   OCR_ENGINE_TESSEROCR = 5;
   OCR_ENGINE_TESSERACT = 6;
+  // Pydantic OcrEngine.TESSERACT_CLI — Tesseract via the CLI binary.
+  OCR_ENGINE_TESSERACT_CLI = 7;
 }
 
 // PDF processing backend.

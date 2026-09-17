@@ -178,6 +178,12 @@ upstream so the VLM extras resolve.
 | --- | --- | --- | --- |
 | `InputFormat.AFP` (IBM AFP / MO:DCA; already on Pydantic / REST docs) | additive | engine | `INPUT_FORMAT_AFP = 34` + `_map_input_format` entry; drift guard `test_input_format_proto_covers_pydantic`. gRParse maps `application/x-afp` / `application/vnd.ibm.modcap` / `.afp` to the same tag (previously mis-tagged as EBCDIC). |
 
+## 2026-09-17 — OcrEngine.TESSERACT_CLI on the Convert wire
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| `OcrEngine.TESSERACT_CLI` (`tesseract_cli`) | additive | engine | `OCR_ENGINE_TESSERACT_CLI = 7` + `_map_ocr_engine` → `"tesseract_cli"`; drift guard `test_ocr_engine_proto_covers_pydantic_enum_values`. Legacy `OCR_ENGINE_TESSEROCR = 5` kept for the `"tesserocr"` kind string. |
+
 ## Not yet accommodated
 
 - `timings` values are `ProfilingItem.total()` seconds (`map<string, double>`)

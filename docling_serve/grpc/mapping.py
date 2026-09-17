@@ -201,6 +201,7 @@ def _map_ocr_engine(value: int) -> Optional[str]:
         "OCR_ENGINE_RAPIDOCR": "rapidocr",
         "OCR_ENGINE_TESSEROCR": "tesserocr",
         "OCR_ENGINE_TESSERACT": "tesseract",
+        "OCR_ENGINE_TESSERACT_CLI": "tesseract_cli",
     }
     return mapping.get(name)
 

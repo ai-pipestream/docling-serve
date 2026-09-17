@@ -975,6 +975,7 @@ def test_ocr_engine_proto_enum_maps_to_upstream_string():
         (docling_serve_types_pb2.OCR_ENGINE_RAPIDOCR, "rapidocr"),
         (docling_serve_types_pb2.OCR_ENGINE_TESSEROCR, "tesserocr"),
         (docling_serve_types_pb2.OCR_ENGINE_TESSERACT, "tesseract"),
+        (docling_serve_types_pb2.OCR_ENGINE_TESSERACT_CLI, "tesseract_cli"),
     ]
     for proto_val, expected in cases:
         assert _map_ocr_engine(proto_val) == expected
@@ -988,6 +989,24 @@ def test_ocr_engine_proto_enum_maps_to_upstream_string():
     assert mapped.ocr_engine != "unspecified"
     # Default pydantic value when unset / skipped
     assert isinstance(mapped.ocr_engine, str)
+
+
+def test_ocr_engine_proto_covers_pydantic_enum_values():
+    """Every OcrEngine enum member must be reachable from a proto tag."""
+    from docling.datamodel.pipeline_options import OcrEngine as DoclingOcrEngine
+
+    reachable: set[str] = set()
+    for value in docling_serve_types_pb2.OcrEngine.DESCRIPTOR.values:
+        if value.number == 0:
+            continue
+        mapped = _map_ocr_engine(value.number)
+        if mapped is not None:
+            reachable.add(mapped)
+    missing = {member.value for member in DoclingOcrEngine} - reachable
+    assert not missing, (
+        f"OcrEngine values not reachable from any proto tag: {sorted(missing)}. "
+        f"Add a proto tag in docling_serve_types.proto and a mapping entry."
+    )
 
 
 def test_picture_classification_labels_are_enums_not_strings():
