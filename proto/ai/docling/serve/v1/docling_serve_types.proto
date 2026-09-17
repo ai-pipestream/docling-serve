@@ -46,6 +46,8 @@ enum InputFormat {
   INPUT_FORMAT_BOXNOTE = 29;
   INPUT_FORMAT_IWORK_PAGES = 30;
   INPUT_FORMAT_EBCDIC = 31;
+  INPUT_FORMAT_RTF = 32;
+  INPUT_FORMAT_MHTML = 33;
 }
 
 // Output format types for converted documents.

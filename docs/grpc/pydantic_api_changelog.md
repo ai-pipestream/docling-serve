@@ -170,7 +170,7 @@ upstream so the VLM extras resolve.
 | Multipart form: omit defaulted fields so `model_fields_set` stays truthful; 422 on invalid options | behavioural | serve REST | gRPC already uses typed options; no change. |
 | Chunking presets / multi-target / plugin connector sources | additive | serve | Audit `ConvertDocumentsRequest` / chunk options vs new REST; extend protos if new public fields. |
 | `allowed_source_types` policy | additive (policy) | serve | Policy interceptor / settings — not a client Convert field. |
-| New input formats in docs (`rtf`, `mhtml`) | additive (docs/enum) | serve | Confirm `InputFormat` proto enum already has RTF/MHTML or add. |
+| New input formats in docs (`rtf`, `mhtml`) | additive (docs/enum) | serve | `INPUT_FORMAT_RTF = 32`, `INPUT_FORMAT_MHTML = 33` + mapping entries; covered by `test_input_format_proto_covers_pydantic`. |
 
 ## Not yet accommodated
 
