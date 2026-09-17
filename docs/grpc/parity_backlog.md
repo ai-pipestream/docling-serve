@@ -9,14 +9,14 @@ Living checklist for the scheduled parity duty. Update when a sync arrives.
 - Always-on rule: `/work/.cursor/rules/docling-parity-duty.mdc`
 - gRParse note: `AGENTS.md` → Recurring parity duty
 
-## Status 2026-09-17 (late+++++)
+## Status 2026-09-17 (post-#688)
 
 | Track | State |
 | --- | --- |
 | Forgejo parser-family dep PRs | **0 open** (script covers collectors + grPOIc/calamine/lol-html/module-parser) |
 | docling-core `feat/add-protobuf` | At **2.97.0**; `upstream/main` is ancestor. |
-| docling-serve `grpc-native-converter` | Content at **1.33.0**; git ancestry still diverges from `upstream/main`. |
-| gRParse Convert options (recent) | IntSpan `page_range`; typed VLM configs; `COLLECTOR_VLM`; **`OUTPUT_FORMAT_CHUNKS` + chunking_preset/options on Convert**. Docker **82/82**. |
+| docling-serve `grpc-native-converter` | Content includes **1.33.0 + Ray app metrics (#688)** (`eng_ray_generate_metrics` / `eng_ray_metrics_port`, jobkit ≥3.7). Ancestry still diverges from `upstream/main` tip `c3becab`. |
+| gRParse Convert options (recent) | IntSpan `page_range`; typed VLM configs; `COLLECTOR_VLM`; **`OUTPUT_FORMAT_CHUNKS` + chunking_preset/options on Convert**. Docker **82/82**. Ray metrics are serve-engine settings only — no Convert wire change. |
 | Monday Automation | Draft reopened — **must Save/Enable**. |
 | Local Monday cron | Installed (`parity-duty-weekly`). |
 
