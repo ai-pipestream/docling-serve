@@ -23,6 +23,6 @@ Living checklist for the scheduled parity duty. Update when a sync arrives.
 
 1. Confirm Monday Automation is saved and enabled.
 2. Forgejo dep sweep each cycle.
-3. Remaining: dial PROCESSING_PIPELINE_VLM via grpc-vlm-convert; honor non-empty custom_* / classification_* on picture engines.
+3. Remaining: dial `PROCESSING_PIPELINE_VLM` via grpc-vlm-convert; honor non-empty custom_* / classification_* on picture engines.
 4. Streaming `page_range` if DocumentChunk ever carries the field.
 5. Optional: rewrite/re-sync serve history so `upstream/main` is a true merge parent without pushing AI-attributed upstream messages through the hook.
