@@ -143,6 +143,35 @@ Schema version has stayed at **1.10.0** for the whole window; no
 `DoclingDocument` structural change has required a proto field since the
 baseline.
 
+
+## 2026-09-17 — docling-core 2.97
+
+Synced `feat/add-protobuf` with `docling-project/main` (clean merge; 199
+serialization tests green).
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| `export_to_markdown` / `export_to_html` gain `image_dir` + `image_uri_prefix`; `image_dir` without `ImageRefMode.REFERENCED` raises | additive (serializer API) | core | No wire change on Convert options; local/export helpers. gRParse Markdown export may later grow matching `image_dir` / URI prefix knobs if clients need file-referenced images. |
+| Markdown serializer: keep row-header-only rows out of the MD table header block | behavioural (serializer) | core | No wire change; affects `DocumentExports.markdown` / gRParse `table_markdown` parity — verify header-row rule still matches after core bump. |
+| DocLang (DCLX) serialization fixes for text split across pages | behavioural | core | No wire change unless DocLang export is exposed on gRPC. |
+
+
+## 2026-09-17 — docling-serve 1.33 (upstream sync into grpc-native-converter)
+
+Merged `upstream/main` through v1.33.0. Lock follows upstream (docling-slim
+≥2.127, jobkit ≥3.6); Darwin transformers pins remain commented as on
+upstream so the VLM extras resolve.
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| S3 coordinates gain `region` | additive | serve / jobkit | Add optional `region` on the S3 source/target messages (or ScalarValue attrs) — **not yet on wire**; track for gRPC + gRParse target delivery. |
+| Azure Blob managed artifact storage + env knobs | additive (settings) | serve | Server config only for managed artifacts; request-side Azure source/target already partially present via jobkit — verify gRPC GenericSource/Target attrs cover Azure/GCS/GDrive plugins. |
+| `DOCLING_SERVE_ENG_RQ_JOB_TIMEOUT` | additive (settings) | serve | None on Convert RPCs; document as server env. |
+| Multipart form: omit defaulted fields so `model_fields_set` stays truthful; 422 on invalid options | behavioural | serve REST | gRPC already uses typed options; no change. |
+| Chunking presets / multi-target / plugin connector sources | additive | serve | Audit `ConvertDocumentsRequest` / chunk options vs new REST; extend protos if new public fields. |
+| `allowed_source_types` policy | additive (policy) | serve | Policy interceptor / settings — not a client Convert field. |
+| New input formats in docs (`rtf`, `mhtml`) | additive (docs/enum) | serve | Confirm `InputFormat` proto enum already has RTF/MHTML or add. |
+
 ## Not yet accommodated
 
 - `timings` values are `ProfilingItem.total()` seconds (`map<string, double>`)
