@@ -152,6 +152,7 @@ def _map_input_format(value: int) -> Optional[InputFormat]:
         "INPUT_FORMAT_EBCDIC": InputFormat.EBCDIC,
         "INPUT_FORMAT_RTF": InputFormat.RTF,
         "INPUT_FORMAT_MHTML": InputFormat.MHTML,
+        "INPUT_FORMAT_AFP": InputFormat.AFP,
     }
     return mapping.get(name)
 

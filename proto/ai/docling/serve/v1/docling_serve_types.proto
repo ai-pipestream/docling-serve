@@ -48,6 +48,8 @@ enum InputFormat {
   INPUT_FORMAT_EBCDIC = 31;
   INPUT_FORMAT_RTF = 32;
   INPUT_FORMAT_MHTML = 33;
+  // IBM AFP / MO:DCA print streams (Pydantic InputFormat.AFP).
+  INPUT_FORMAT_AFP = 34;
 }
 
 // Output format types for converted documents.

@@ -181,6 +181,10 @@ def test_enum_mappings():
         == InputFormat.MHTML
     )
     assert (
+        _map_input_format(docling_serve_types_pb2.INPUT_FORMAT_AFP)
+        == InputFormat.AFP
+    )
+    assert (
         _map_output_format(docling_serve_types_pb2.OUTPUT_FORMAT_YAML)
         == OutputFormat.YAML
     )
