@@ -16,7 +16,7 @@ Living checklist for the scheduled parity duty. Update when a sync arrives.
 | Forgejo parser-family dep PRs | **0 open** (script covers collectors + grPOIc/calamine/lol-html/module-parser) |
 | docling-core `feat/add-protobuf` | At **2.97.0**; `upstream/main` is ancestor. |
 | docling-serve `grpc-native-converter` | Content includes **1.33.0 + Ray app metrics (#688)** (`eng_ray_generate_metrics` / `eng_ray_metrics_port`, jobkit ≥3.7). Ancestry still diverges from `upstream/main` tip `c3becab`. |
-| gRParse Convert options (recent) | IntSpan `page_range`; typed VLM configs; `COLLECTOR_VLM`; **`OUTPUT_FORMAT_CHUNKS` + chunking_preset/options on Convert**. Docker **82/82**. Ray metrics are serve-engine settings only — no Convert wire change. |
+| gRParse Convert options (recent) | IntSpan `page_range`; typed VLM configs; `COLLECTOR_VLM`; **`OUTPUT_FORMAT_CHUNKS` + chunking_preset/options on Convert**; **`OUTPUT_FORMAT_DCLX` → `exports.dclx` (ZIP)**. Ray metrics are serve-engine settings only — no Convert wire change. |
 | Monday Automation | Draft reopened — **must Save/Enable**. |
 | Local Monday cron | Installed (`parity-duty-weekly`). |
 
@@ -25,4 +25,4 @@ Living checklist for the scheduled parity duty. Update when a sync arrives.
 1. Confirm Monday Automation is saved and enabled.
 2. Forgejo dep sweep each cycle.
 3. Optional: rewrite/re-sync serve history so `upstream/main` is a true merge parent.
-4. Note: gRParse field tags 44+ are fleet-specific; serve chunking fields are at 48–50, gRParse at 52–54 (same names). `OUTPUT_FORMAT_CHUNKS` is enum 13 here (serve uses 11; 11 is GDOCS_JSON in gRParse).
+4. Note: gRParse field tags 44+ are fleet-specific; serve chunking fields are at 48–50, gRParse at 52–54 (same names). `OUTPUT_FORMAT_CHUNKS` is enum 13 here (serve uses 11; 11 is GDOCS_JSON in gRParse). `OUTPUT_FORMAT_DCLX` is enum 14 here (serve uses 10; 10 is CANONICAL_JSON in gRParse).
