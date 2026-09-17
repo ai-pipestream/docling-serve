@@ -623,6 +623,53 @@ async def test_get_chunk_result(grpc_stub, orchestrator):
 
 
 @pytest.mark.asyncio
+async def test_get_chunk_result_chunking_info_is_typed_scalar_map(grpc_stub, orchestrator):
+    """ChunkedDocumentResult.chunking_info flattens to map<string, ScalarValue>."""
+    task_id = "chunk-info"
+    chunk = ChunkedDocumentResultItem(
+        filename="doc.md",
+        chunk_index=0,
+        text="chunk text",
+        doc_items=[],
+    )
+    orchestrator.results[task_id] = DoclingTaskResult(
+        result=ChunkedDocumentResult(
+            chunks=[chunk],
+            documents=[],
+            chunking_info={
+                "chunker": "hybrid",
+                "use_markdown_tables": False,
+                "max_tokens": 128,
+                "merge_peers": True,
+                "tokenizer": "sentence-transformers/all-MiniLM-L6-v2",
+            },
+        ),
+        processing_time=0.2,
+        num_converted=1,
+        num_succeeded=1,
+        num_failed=0,
+    )
+
+    response = await grpc_stub.GetChunkResult(
+        docling_serve_pb2.GetChunkResultRequest(
+            request=docling_serve_types_pb2.TaskResultRequest(task_id=task_id)
+        )
+    )
+
+    assert response.WhichOneof("result") == "response"
+    info = response.response.chunking_info
+    assert info["chunker"].WhichOneof("kind") == "string_value"
+    assert info["chunker"].string_value == "hybrid"
+    assert info["use_markdown_tables"].bool_value is False
+    assert info["max_tokens"].int_value == 128
+    assert info["merge_peers"].bool_value is True
+    assert (
+        info["tokenizer"].string_value
+        == "sentence-transformers/all-MiniLM-L6-v2"
+    )
+
+
+@pytest.mark.asyncio
 async def test_get_chunk_result_not_found(grpc_stub):
     with pytest.raises(grpc.aio.AioRpcError) as exc_info:
         await grpc_stub.GetChunkResult(

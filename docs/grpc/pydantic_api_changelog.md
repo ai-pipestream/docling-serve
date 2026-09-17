@@ -219,3 +219,9 @@ upstream so the VLM extras resolve.
 | Change | Kind | Layer | Proto accommodation |
 | --- | --- | --- | --- |
 | REST `timings` values are full `ProfilingItem` (`scope`, `count`, `times`, `start_timestamps`) | additive | serve | New `ProfilingScope` + `ProfilingItem`; `ConvertDocumentResponse.profiling = 8`, `Document.profiling = 8`, `DocumentArtifactItem.profiling = 10`. Existing `map<string, double> timings` keeps totals for older clients. |
+
+## 2026-09-17 — ChunkDocumentResponse.chunking_info
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| `ChunkedDocumentResult.chunking_info: Optional[dict]` (jobkit dump of active chunker options; REST `ChunkDocumentResponse` omits it) | additive | jobkit | `ChunkDocumentResponse.chunking_info = 4` as `map<string, ScalarValue>` via `_dict_to_scalar_map` (same pattern as `Chunk.metadata`). |

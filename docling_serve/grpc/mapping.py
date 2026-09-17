@@ -1709,6 +1709,7 @@ def chunk_result_to_proto(
         chunks=chunks,
         documents=documents,
         processing_time=processing_time,
+        chunking_info=_dict_to_scalar_map(result.chunking_info or {}),
     )
 
 
