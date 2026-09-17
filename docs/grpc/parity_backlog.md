@@ -22,3 +22,9 @@ Living checklist for the scheduled parity duty. Update when a sync lands.
 | Convert-side `chunking_preset` | Serve has it; gRParse uses dedicated chunk RPCs (intentional). |
 | gRParse `from_formats` | **Implemented**: allowlisted in `validate_options`; after sniff, rejects inputs not in a non-empty list (`input_format.cpp` + unit test). |
 | Monday Automation | Draft reopened in Automations editor — **must Save/Enable** (cannot verify from agent). |
+
+## Next agent actions
+
+1. Confirm Monday Automation is saved and enabled.
+2. Forgejo dep sweep (`FORGEJO_PAT` @ `git.rokkon.com/ai-pipestream`).
+3. Fetch upstream; sync if new releases land.
