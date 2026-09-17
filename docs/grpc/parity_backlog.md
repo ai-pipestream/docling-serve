@@ -16,7 +16,7 @@ Living checklist for the scheduled parity duty. Update when a sync arrives.
 | Forgejo parser-family dep PRs | **0 open** |
 | docling-core `feat/add-protobuf` | At **2.97.0**; `upstream/main` is ancestor. |
 | docling-serve `grpc-native-converter` | Content at **1.33.0**; git ancestry still diverges from `upstream/main`. |
-| gRParse Convert options (recent) | IntSpan `page_range`; typed VLM configs; **`COLLECTOR_VLM` sole-collector dial** (= `PROCESSING_PIPELINE_VLM`). Docker **82/82**. |
+| gRParse Convert options (recent) | IntSpan `page_range`; typed VLM configs; **`COLLECTOR_VLM` sole-collector path** (= `PROCESSING_PIPELINE_VLM`). Docker **82/82**. |
 | Monday Automation | Draft reopened — **must Save/Enable**. |
 | Local Monday cron | Installed (`parity-duty-weekly`). |
 
