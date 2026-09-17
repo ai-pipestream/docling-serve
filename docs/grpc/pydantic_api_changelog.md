@@ -190,6 +190,12 @@ upstream so the VLM extras resolve.
 | --- | --- | --- | --- |
 | In-body YAML / VTT / HTML split-page exports (OutputFormat already on the request wire; jobkit in-body model has no slots) | additive | serve | `DocumentExports.yaml = 8`, `vtt = 9`, `html_split_page = 10`; `_build_exports` serializes on demand from `DoclingDocument` (`yaml.dump(export_to_dict())`, `export_to_vtt()`, `export_to_html(split_page_view=True)`), same pattern as LaTeX. |
 
+## 2026-09-17 — DocumentExports.DCLX
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| In-body DocLang OPC archive (`OutputFormat.DCLX`) | additive | serve | `DocumentExports.dclx = 11` (`bytes`); `_build_exports` uses `save_as_doclang_archive` into a temp file and returns the ZIP bytes. |
+
 ## Not yet accommodated
 
 - `timings` values are `ProfilingItem.total()` seconds (`map<string, double>`)

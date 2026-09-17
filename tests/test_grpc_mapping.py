@@ -434,6 +434,27 @@ def test_build_exports_yaml_vtt_html_split_page():
     assert "<html" in exports.html_split_page.lower()
 
 
+def test_build_exports_dclx():
+    from types import SimpleNamespace
+
+    from docling_core.types.doc.document import DoclingDocument
+
+    exports = _build_exports(
+        SimpleNamespace(
+            json_content=DoclingDocument(name="n"),
+            md_content=None,
+            html_content=None,
+            text_content=None,
+            doctags_content=None,
+            doclang_content=None,
+        ),
+        {OutputFormat.DCLX},
+    )
+    assert exports is not None
+    assert exports.HasField("dclx")
+    assert exports.dclx[:4] == b"PK\x03\x04"
+
+
 def test_to_task_sources_and_target():
     sources = to_task_sources(
         [

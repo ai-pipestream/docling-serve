@@ -783,6 +783,8 @@ message DocumentExports {
   optional string vtt = 9;
   // OutputFormat.HTML_SPLIT_PAGE — HTML with split_page_view=True.
   optional string html_split_page = 10;
+  // OutputFormat.DCLX — DocLang OPC archive bytes (ZIP with document.xml).
+  optional bytes dclx = 11;
 }
 
 // DocumentResponse contains the converted document and optional exports.

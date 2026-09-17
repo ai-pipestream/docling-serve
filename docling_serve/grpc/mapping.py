@@ -1472,6 +1472,15 @@ def _build_exports(
     if wants(OutputFormat.HTML_SPLIT_PAGE) and doc.json_content is not None:
         exports.html_split_page = doc.json_content.export_to_html(split_page_view=True)
         has_any = True
+    if wants(OutputFormat.DCLX) and doc.json_content is not None:
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as staging:
+            archive = Path(staging) / "document.dclx"
+            doc.json_content.save_as_doclang_archive(archive)
+            exports.dclx = archive.read_bytes()
+            has_any = True
 
     return exports if has_any else None
 

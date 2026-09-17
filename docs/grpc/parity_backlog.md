@@ -9,15 +9,15 @@ Living checklist for the scheduled parity duty. Update when a sync arrives.
 - Always-on rule: `/work/.cursor/rules/docling-parity-duty.mdc`
 - gRParse note: `AGENTS.md` → Recurring parity duty
 
-## Status 2026-09-17 (post-exports YAML/VTT/html_split)
+## Status 2026-09-17 (post-exports YAML/VTT/html_split/DCLX)
 
 | Track | State |
 | --- | --- |
-| Forgejo parser-family dep PRs | **0 open** (script covers collectors + grPOIc/calamine/lol-html/module-parser) |
+| Forgejo parser-family dep PRs | **0 open** |
 | docling-core `feat/add-protobuf` | At **2.97.0**; `upstream/main` is ancestor. |
-| docling-serve `grpc-native-converter` | Content includes **1.33.0 + Ray app metrics (#688)** + **DocumentExports yaml/vtt/html_split_page**. Ancestry still diverges from `upstream/main` tip `c3becab`. |
-| gRParse Convert options (recent) | IntSpan `page_range`; typed VLM; `COLLECTOR_VLM`; **CHUNKS**; **DCLX**; **`INPUT_FORMAT_AFP`**; **`OCR_ENGINE_TESSERACT_CLI`**; yaml/vtt/html_split already on wire. |
-| Monday Automation | Draft reopened — **must Save/Enable**. |
+| docling-serve `grpc-native-converter` | **1.33.0 + Ray #688** + `DocumentExports` **yaml/vtt/html_split_page/dclx**. Ancestry still diverges from `upstream/main`. |
+| gRParse Convert options (recent) | AFP; TESSERACT_CLI; yaml/vtt/html_split/dclx already on wire (fleet field tags differ). |
+| Monday Automation | Draft reopened in Glass — **must Save/Enable**. |
 | Local Monday cron | Installed (`parity-duty-weekly`). |
 
 ## Next agent actions
