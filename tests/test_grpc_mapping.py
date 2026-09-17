@@ -477,6 +477,7 @@ def test_to_task_sources_and_target():
                     bucket="bucket",
                     key_prefix="prefix",
                     verify_ssl=True,
+                    region="us-east-2",
                 )
             ),
         ]
@@ -485,6 +486,7 @@ def test_to_task_sources_and_target():
     assert isinstance(sources[0], FileSourceRequest)
     assert isinstance(sources[1], HttpSourceRequest)
     assert isinstance(sources[2], S3SourceRequest)
+    assert sources[2].region == "us-east-2"
 
     assert isinstance(to_task_target(None), InBodyTarget)
     assert isinstance(
@@ -501,20 +503,20 @@ def test_to_task_sources_and_target():
         ),
         PutTarget,
     )
-    assert isinstance(
-        to_task_target(
-            docling_serve_types_pb2.Target(
-                s3=docling_serve_types_pb2.S3Target(
-                    endpoint="s3.example.com",
-                    access_key="a",
-                    secret_key="b",
-                    bucket="bucket",
-                    verify_ssl=True,
-                )
+    s3_tgt = to_task_target(
+        docling_serve_types_pb2.Target(
+            s3=docling_serve_types_pb2.S3Target(
+                endpoint="s3.example.com",
+                access_key="a",
+                secret_key="b",
+                bucket="bucket",
+                verify_ssl=True,
+                region="eu-west-1",
             )
-        ),
-        S3Target,
+        )
     )
+    assert isinstance(s3_tgt, S3Target)
+    assert s3_tgt.region == "eu-west-1"
     presigned = to_task_target(
         docling_serve_types_pb2.Target(
             presigned_url=docling_serve_types_pb2.PreSignedUrlTarget()

@@ -196,6 +196,12 @@ upstream so the VLM extras resolve.
 | --- | --- | --- | --- |
 | In-body DocLang OPC archive (`OutputFormat.DCLX`) | additive | serve | `DocumentExports.dclx = 11` (`bytes`); `_build_exports` uses `save_as_doclang_archive` into a temp file and returns the ZIP bytes. |
 
+## 2026-09-17 — S3Coordinates.region (#694)
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| `S3Coordinates.region` on request sources/targets (jobkit / slim; also server `artifact_storage_region`) | additive | serve | `S3Source.region = 8`, `S3Target.region = 8`; mapping passes through when set. Managed-artifact env was already wired in settings/orchestrator_factory. |
+
 ## Not yet accommodated
 
 - `timings` values are `ProfilingItem.total()` seconds (`map<string, double>`)

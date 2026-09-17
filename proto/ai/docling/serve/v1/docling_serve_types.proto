@@ -339,6 +339,9 @@ message S3Source {
   optional string key_prefix = 5;
   bool verify_ssl = 6;
   optional int32 max_num_elements = 7;
+  // AWS region for signing (e.g. us-east-2). Optional for S3-compatible
+  // services that ignore region; required for real AWS outside us-east-1.
+  optional string region = 8;
 }
 
 message AzureBlobSource {
@@ -434,6 +437,9 @@ message S3Target {
   optional string key_prefix = 5;
   bool verify_ssl = 6;
   optional int32 max_num_elements = 7;
+  // AWS region for signing (e.g. us-east-2). Optional for S3-compatible
+  // services that ignore region; required for real AWS outside us-east-1.
+  optional string region = 8;
 }
 
 message ZipTarget {}

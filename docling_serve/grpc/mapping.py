@@ -682,6 +682,8 @@ def to_task_sources(proto_sources: Iterable[docling_serve_types_pb2.Source]):
             }
             if s3_src.HasField("max_num_elements"):
                 data["max_num_elements"] = s3_src.max_num_elements
+            if s3_src.HasField("region"):
+                data["region"] = s3_src.region
             sources.append(S3SourceRequest.model_validate(data))
         elif kind == "azure_blob":
             az = source.azure_blob
@@ -755,6 +757,8 @@ def to_task_target(proto_target: Optional[docling_serve_types_pb2.Target]):
         }
         if s3_tgt.HasField("max_num_elements"):
             data["max_num_elements"] = s3_tgt.max_num_elements
+        if s3_tgt.HasField("region"):
+            data["region"] = s3_tgt.region
         return S3Target.model_validate(data)
     if kind == "presigned_url":
         return PresignedUrlTarget()
