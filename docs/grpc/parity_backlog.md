@@ -16,13 +16,13 @@ Living checklist for the scheduled parity duty. Update when a sync arrives.
 | Forgejo parser-family dep PRs | **0 open** (rechecked) |
 | docling-core `feat/add-protobuf` | At **2.97.0**; `upstream/main` is ancestor (fork ahead with protobuf). |
 | docling-serve `grpc-native-converter` | Content at **1.33.0** (S3 region settings included). Git ancestry still diverges from `upstream/main` (ours-merge blocked by AI-trailer pre-push on upstream commits). |
-| gRParse Convert options (recent) | `page_range` PDF `bf63781`; OCR/table/picture opts; `pdf_backend`/`table_cell_matching`/`abort_on_error` `490d6b4`; `do_chart_extraction` gates enrich derender. Docker **81/81** passed. |
+| gRParse Convert options (recent) | Enrich path honors picture description, code/formula, and chart extraction Convert flags; writes annotations on the document. Docker **81/81** passed. |
 | Monday Automation | Draft reopened — **must Save/Enable**. |
 
 ## Next agent actions
 
 1. Confirm Monday Automation is saved and enabled.
 2. Forgejo dep sweep each cycle.
-3. Remaining Convert options needing remote models: picture description, code/formula enrichment, VLM pipeline, custom_* Struct configs.
+3. Remaining Convert options: VLM pipeline selection, nested picture_description_local/api, custom_* Struct configs.
 4. Streaming `page_range` if DocumentChunk ever carries the field.
 5. Optional: rewrite/re-sync serve history so `upstream/main` is a true merge parent without pushing AI-attributed upstream messages through the hook.
