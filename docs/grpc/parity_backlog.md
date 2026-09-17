@@ -15,7 +15,7 @@ Living checklist for the scheduled parity duty. Update when a sync arrives.
 | --- | --- |
 | Forgejo parser-family dep PRs | **0 open** (weekly script covers full collector family) |
 | docling-core `feat/add-protobuf` | At **2.97.0**; `upstream/main` is ancestor (0 behind). |
-| docling-serve `grpc-native-converter` | Content matches upstream tip (**yaml/vtt/html_split/dclx**, **S3.region**, Ray metrics, settings). Git ancestry still diverges (35 commits). A literal `merge upstream/main` is blocked by pre-push: upstream `#641` carries `Co-authored-by: Claude Opus…`. |
+| docling-serve `grpc-native-converter` | Content matches upstream tip (**yaml/vtt/html_split/dclx**, **S3.region**, Ray metrics, settings). **`PROCESSING_PIPELINE_NATIVE` live** on slim≥2.127. Ancestry still diverges (merge blocked by upstream AI trailer on #641). |
 | gRParse | **S3.region** + prior Convert parity; fleet-only: `canonical_json`/`gdocs_json`, collectors. |
 | Monday Automation | Draft open in Glass — **must Save/Enable** (auth required). |
 | Local Monday cron | Installed; script expanded to full collector family. |

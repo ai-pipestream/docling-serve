@@ -311,6 +311,15 @@ def test_to_convert_options_unsupported_pipeline_tag_rejected(monkeypatch):
         to_convert_options(opts)
 
 
+def test_to_convert_options_native_pipeline_maps():
+    """PROCESSING_PIPELINE_NATIVE is live on docling-slim >= 2.126."""
+    opts = docling_serve_types_pb2.ConvertDocumentOptions(
+        pipeline=docling_serve_types_pb2.PROCESSING_PIPELINE_NATIVE
+    )
+    mapped = to_convert_options(opts)
+    assert mapped.pipeline == ProcessingPipeline.NATIVE
+
+
 def test_to_convert_options_unknown_pipeline_int_dropped():
     """A numeric tag this proto does not know (newer client) is ignored, matching
     the lenient handling of every other enum field."""

@@ -212,9 +212,8 @@ upstream so the VLM extras resolve.
   while `Task.task_status` is `TaskStatus`; the proto keeps `TaskStatus`
   (identical string vocabulary for the four states used).
 
-- `docling-slim >= 2.125` cannot be locked in docling-serve: `docling-jobkit`
-  3.5's `models-vlm-inline` extra pulls `mlx-vlm >= 0.6.17`, which requires
-  `transformers >= 5.14` on Darwin while serve's constraints cap it at
-  `< 5.9`. The pin stays at `>= 2.124` until jobkit or upstream serve resolves
-  it. `PROCESSING_PIPELINE_NATIVE` is therefore reserved but unreachable on
-  the current lock.
+## 2026-09-17 — PROCESSING_PIPELINE_NATIVE live
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| `ProcessingPipeline.NATIVE` reachable on current lock (`docling-slim>=2.127` / engine 2.128) | additive (now live) | engine | Tag `PROCESSING_PIPELINE_NATIVE = 5` was reserved earlier; `_map_pipeline` resolves it via `getattr` and `to_convert_options` accepts it. Drift + positive mapping tests. |
