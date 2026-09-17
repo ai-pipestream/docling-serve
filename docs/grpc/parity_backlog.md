@@ -1,6 +1,6 @@
 # Docling ↔ gRPC ↔ gRParse parity backlog
 
-Living checklist for the scheduled parity duty. Update when a sync lands.
+Living checklist for the scheduled parity duty. Update when a sync arrives.
 
 ## Cadence
 
@@ -16,13 +16,14 @@ Living checklist for the scheduled parity duty. Update when a sync lands.
 | Forgejo parser-family dep PRs | **0 open** (rechecked) |
 | docling-core `feat/add-protobuf` | At **2.97.0**; `upstream/main` is ancestor (fork ahead with protobuf). |
 | docling-serve `grpc-native-converter` | Merged `upstream/main` → tip at **1.33.0**; gRPC mapping/fake tests **118 passed**. |
-| gRParse `document_timeout` / `page_range` | **Landed** `9e3234c`: deadline cap + CV page span. PDF/NATIVE: `bf63781` forwards as `PdfOptions.pages`. |
-| gRParse `include_images` / `images_scale` / `image_export_mode` | **Landed** `a4f63a0`/`dbc0455`: picture crops + Markdown export modes. Docker **81/81** green. |
+| gRParse `document_timeout` / `page_range` | In tree `9e3234c` (deadline + CV span); PDF/NATIVE `bf63781` → `PdfOptions.pages`. |
+| gRParse `include_images` / `images_scale` / `image_export_mode` | In tree `a4f63a0`/`dbc0455` (picture crops + Markdown export). Docker **81/81** passed. |
+| gRParse `ocr_engine` / `do_table_structure` | In tree `4f1358a`: RapidOCR/AUTO accepted; other engines refused by name; `do_table_structure=false` skips RapidTable. |
 | Monday Automation | Draft reopened — **must Save/Enable**. |
 
 ## Next agent actions
 
 1. Confirm Monday Automation is saved and enabled.
 2. Forgejo dep sweep each cycle.
-3. Remaining Convert gaps (OCR engine, table/VLM enrichment, etc.).
-4. Streaming `page_range` if DocumentChunk gains the field.
+3. Remaining Convert options (table_mode, VLM/picture enrichment, ocr_lang, pdf_backend, …).
+4. Streaming `page_range` if DocumentChunk ever carries the field.
