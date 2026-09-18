@@ -210,6 +210,8 @@ def _map_pdf_backend(value: int) -> Optional[PdfBackend]:
     name = _enum_name(docling_serve_types_pb2.PdfBackend, value)
     if not name:
         return None
+    # REST string values (slim 2.128+): THREADED_DOCLING_PARSE == "docling_parse",
+    # deprecated DOCLING_PARSE == "_docling_parse". Proto tags are unchanged.
     mapping = {
         "PDF_BACKEND_PYPDFIUM2": PdfBackend.PYPDFIUM2,
         "PDF_BACKEND_DOCLING_PARSE": PdfBackend.DOCLING_PARSE,

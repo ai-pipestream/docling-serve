@@ -225,3 +225,9 @@ upstream so the VLM extras resolve.
 | Change | Kind | Layer | Proto accommodation |
 | --- | --- | --- | --- |
 | `ChunkedDocumentResult.chunking_info: Optional[dict]` (jobkit dump of active chunker options; REST `ChunkDocumentResponse` omits it) | additive | jobkit | `ChunkDocumentResponse.chunking_info = 4` as `map<string, ScalarValue>` via `_dict_to_scalar_map` (same pattern as `Chunk.metadata`). |
+
+## 2026-09-18 — PdfBackend REST string rename (slim 2.128 / serve 1.34.0)
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| `PdfBackend.THREADED_DOCLING_PARSE` value is now `"docling_parse"`; deprecated `DOCLING_PARSE` is `"_docling_parse"` | behavioural (REST strings) | engine | No new proto tag. Existing `PDF_BACKEND_DOCLING_PARSE` / `PDF_BACKEND_THREADED_DOCLING_PARSE` still map to the same enum members; engine `normalize_pdf_backend` folds the deprecated ones onto threaded. Drift guard `test_pdf_backend_proto_covers_pydantic` still holds. |

@@ -298,6 +298,20 @@ def test_pdf_backend_proto_covers_pydantic():
     )
 
 
+def test_pdf_backend_rest_string_values_match_slim_2128():
+    """slim 2.128 renamed REST strings; proto tags must still hit the same members."""
+    assert PdfBackend.THREADED_DOCLING_PARSE.value == "docling_parse"
+    assert PdfBackend.DOCLING_PARSE.value == "_docling_parse"
+    assert (
+        _map_pdf_backend(docling_serve_types_pb2.PDF_BACKEND_THREADED_DOCLING_PARSE)
+        == PdfBackend.THREADED_DOCLING_PARSE
+    )
+    assert (
+        _map_pdf_backend(docling_serve_types_pb2.PDF_BACKEND_DOCLING_PARSE)
+        == PdfBackend.DOCLING_PARSE
+    )
+
+
 def test_to_convert_options_unsupported_pipeline_tag_rejected(monkeypatch):
     """A pipeline tag the proto defines but the installed engine lacks must raise
     rather than silently fall back to the default pipeline."""
