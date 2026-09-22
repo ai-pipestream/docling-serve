@@ -231,3 +231,12 @@ upstream so the VLM extras resolve.
 | Change | Kind | Layer | Proto accommodation |
 | --- | --- | --- | --- |
 | `PdfBackend.THREADED_DOCLING_PARSE` value is now `"docling_parse"`; deprecated `DOCLING_PARSE` is `"_docling_parse"` | behavioural (REST strings) | engine | No new proto tag. Existing `PDF_BACKEND_DOCLING_PARSE` / `PDF_BACKEND_THREADED_DOCLING_PARSE` still map to the same enum members; engine `normalize_pdf_backend` folds the deprecated ones onto threaded. Drift guard `test_pdf_backend_proto_covers_pydantic` still holds. |
+
+## 2026-09-22 — core 2.97.2 caption order, slim 2.129 chart extraction and S3 credentials
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| `CaptionPlacement` (`standard`, `layout`) on `MarkdownParams` (docling-core #786) | additive, proto-only vs `ConvertDocumentsOptions` | core | `CaptionPlacement` enum. `ConvertDocumentOptions.caption_placement = 51`. Unset keeps engine markdown; `standard` and `layout` re-export from the DoclingDocument. Allowlisted in the schema checker. |
+| `chart_extraction_preset` and `chart_extraction_custom_config: ChartExtractionVlmEngineOptions` (slim 2.129) | additive | engine | `ChartExtractionOutputFormat`, `ChartExtractionVlmEngineOptions`. Fields 52 and 53, mutually exclusive. Engine type and model spec are required on the custom config. |
+| `S3Coordinates.access_key` / `secret_key` optional; both omitted means ambient credentials | additive, wire-compatible | engine | `S3Source` and `S3Target` fields 2 and 3 are `optional string`. Exactly one key, or an empty key, is rejected. |
+

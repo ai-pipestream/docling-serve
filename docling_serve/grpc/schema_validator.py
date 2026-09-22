@@ -61,6 +61,10 @@ ALLOWED_COERCIONS: dict[str, tuple[str, str]] = {
         "union<message:CodeFormulaVlmOptions,dict>",
         "message:CodeFormulaVlmOptions",
     ),
+    "chart_extraction_custom_config": (
+        "optional<union<message:ChartExtractionVlmEngineOptions,dict>>",
+        "message:ChartExtractionVlmEngineOptions",
+    ),
     # --- Response side ---------------------------------------------------
     # REST inlines the full ProfilingItem per timing key; gRPC carries the
     # aggregate ProfilingItem.total() seconds (see mapping._timings_to_proto).
@@ -268,6 +272,9 @@ _PROTO_ONLY_FIELD_NAMES: set[str] = {
     # jobkit ChunkedDocumentResult.chunking_info; REST ChunkDocumentResponse
     # drops it in response_preparation.
     "chunking_info",
+    # docling-core MarkdownParams.caption_placement. ConvertDocumentsOptions
+    # does not carry it; gRPC applies it when re-exporting Markdown.
+    "caption_placement",
 }
 
 # Wire form of Pydantic `extra="allow"` payloads on serve connector models
@@ -341,6 +348,7 @@ _RAW_FALLBACK_SUFFIXES: set[str] = {
     "mean_grade_raw",
     "low_grade_raw",
     "artifact_type_raw",
+    "output_format_raw",
     "task_type_raw",
     "component_type_raw",
     "document_type_raw",

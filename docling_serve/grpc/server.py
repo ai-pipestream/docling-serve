@@ -53,6 +53,7 @@ from .mapping import (
     UnexpectedResultType,
     clear_response_to_proto,
     requested_output_formats,
+    caption_placement_from_options,
     set_chunk_result,
     set_convert_result,
     task_failure_to_proto,
@@ -88,6 +89,7 @@ class _PreparedRequest:
     target: object
     callbacks: list
     requested_formats: set[OutputFormat]
+    caption_placement: object = None
     chunking_options: object = None
     chunking_export_options: ChunkingExportOptions = field(
         default_factory=ChunkingExportOptions
@@ -105,6 +107,7 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
         self._queue_task: Optional[asyncio.Task] = None
         self._queue_lock = asyncio.Lock()
         self._requested_formats: dict[str, set[OutputFormat]] = {}
+        self._caption_placements: dict[str, object] = {}
 
     async def start(self) -> None:
         await self._ensure_queue_started()
@@ -212,12 +215,17 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
         self._ensure_doc_format(options, requested_formats)
         target = self._parse_target(body)
         options = self._enforce_policy(sources, options, target, callbacks=callbacks)
+        try:
+            caption_placement = caption_placement_from_options(options_proto)
+        except ValueError as exc:
+            raise RequestRejected(str(exc)) from exc
         return _PreparedRequest(
             sources=sources,
             options=options,
             target=target,
             callbacks=callbacks,
             requested_formats=requested_formats,
+            caption_placement=caption_placement,
         )
 
     def build_chunk(self, body, *, hybrid: bool) -> _PreparedRequest:
@@ -245,12 +253,17 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
         options = self._enforce_policy(
             sources, options, target, chunk=True, callbacks=callbacks
         )
+        try:
+            caption_placement = caption_placement_from_options(options_proto)
+        except ValueError as exc:
+            raise RequestRejected(str(exc)) from exc
         return _PreparedRequest(
             sources=sources,
             options=options,
             target=target,
             callbacks=callbacks,
             requested_formats=requested_formats,
+            caption_placement=caption_placement,
             chunking_options=chunking_options,
             chunking_export_options=export_options,
         )
@@ -390,13 +403,16 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
         outcome: DoclingTaskResult | StoredFailureOutcome,
         requested_formats: set[OutputFormat],
         context: grpc.aio.ServicerContext,
+        caption_placement=None,
     ) -> bool:
         """Populate the convert result oneof; False after aborting on a bad arm."""
         if isinstance(outcome, StoredFailureOutcome):
             message.failure.CopyFrom(task_failure_to_proto(outcome.failure))
             return True
         try:
-            set_convert_result(message, outcome, requested_formats)
+            set_convert_result(
+                message, outcome, requested_formats, caption_placement=caption_placement
+            )
         except UnexpectedResultType as exc:
             await self._abort(context, grpc.StatusCode.FAILED_PRECONDITION, str(exc))
             return False
@@ -408,13 +424,16 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
         outcome: DoclingTaskResult | StoredFailureOutcome,
         requested_formats: set[OutputFormat],
         context: grpc.aio.ServicerContext,
+        caption_placement=None,
     ) -> bool:
         """Populate the chunk result oneof; False after aborting on a bad arm."""
         if isinstance(outcome, StoredFailureOutcome):
             message.failure.CopyFrom(task_failure_to_proto(outcome.failure))
             return True
         try:
-            set_chunk_result(message, outcome, requested_formats)
+            set_chunk_result(
+                message, outcome, requested_formats, caption_placement=caption_placement
+            )
         except UnexpectedResultType as exc:
             await self._abort(context, grpc.StatusCode.FAILED_PRECONDITION, str(exc))
             return False
@@ -448,6 +467,8 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
         task = await self._enqueue(prepared, task_type)
         position = await self._orchestrator.get_queue_position(task_id=task.task_id)
         self._requested_formats[task.task_id] = prepared.requested_formats
+        if prepared.caption_placement is not None:
+            self._caption_placements[task.task_id] = prepared.caption_placement
         return task_status_to_proto(task, position)
 
     # -------------------- RPCs --------------------
@@ -486,7 +507,11 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
             return response
         task_id, outcome = run
         if not await self._fill_convert_result(
-            response, outcome, prepared.requested_formats, context
+            response,
+            outcome,
+            prepared.requested_formats,
+            context,
+            caption_placement=prepared.caption_placement,
         ):
             return response
         with_single_use_cleanup(self._orchestrator, task_id)
@@ -558,6 +583,15 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
             )
             return empty
 
+        options_proto = (
+            request.request.options if request.request.HasField("options") else None
+        )
+        try:
+            caption_placement = caption_placement_from_options(options_proto)
+        except ValueError as exc:
+            await self._abort(context, grpc.StatusCode.INVALID_ARGUMENT, str(exc))
+            return empty
+
         task = await self._orchestrator.enqueue(
             task_type=TaskType.CONVERT,
             sources=sources,
@@ -566,9 +600,9 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
             callbacks=batch.callbacks,
         )
         position = await self._orchestrator.get_queue_position(task_id=task.task_id)
-        self._requested_formats[task.task_id] = requested_output_formats(
-            request.request.options if request.request.HasField("options") else None
-        )
+        self._requested_formats[task.task_id] = requested_output_formats(options_proto)
+        if caption_placement is not None:
+            self._caption_placements[task.task_id] = caption_placement
         return docling_serve_pb2.ConvertSourceBatchResponse(
             response=task_status_to_proto(task, position)
         )
@@ -595,7 +629,11 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
             return response
         task_id, outcome = run
         if not await self._fill_chunk_result(
-            response, outcome, prepared.requested_formats, context
+            response,
+            outcome,
+            prepared.requested_formats,
+            context,
+            caption_placement=prepared.caption_placement,
         ):
             return response
         with_single_use_cleanup(self._orchestrator, task_id)
@@ -623,7 +661,11 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
             return response
         task_id, outcome = run
         if not await self._fill_chunk_result(
-            response, outcome, prepared.requested_formats, context
+            response,
+            outcome,
+            prepared.requested_formats,
+            context,
+            caption_placement=prepared.caption_placement,
         ):
             return response
         with_single_use_cleanup(self._orchestrator, task_id)
@@ -692,8 +734,13 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
         if outcome is None:
             return response
         requested_formats = self._requested_formats.pop(task_id, set())
+        caption_placement = self._caption_placements.pop(task_id, None)
         if not await self._fill_convert_result(
-            response, outcome, requested_formats, context
+            response,
+            outcome,
+            requested_formats,
+            context,
+            caption_placement=caption_placement,
         ):
             return response
         with_single_use_cleanup(self._orchestrator, task_id)
@@ -712,8 +759,13 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
         if outcome is None:
             return response
         requested_formats = self._requested_formats.pop(task_id, set())
+        caption_placement = self._caption_placements.pop(task_id, None)
         if not await self._fill_chunk_result(
-            response, outcome, requested_formats, context
+            response,
+            outcome,
+            requested_formats,
+            context,
+            caption_placement=caption_placement,
         ):
             return response
         with_single_use_cleanup(self._orchestrator, task_id)

@@ -122,6 +122,21 @@ enum ImageRefMode {
   IMAGE_REF_MODE_REFERENCED = 3;
 }
 
+// Where captions sit relative to the item they caption (docling-core
+// CaptionPlacement). STANDARD is the per-type order; LAYOUT uses bbox centers.
+enum CaptionPlacement {
+  CAPTION_PLACEMENT_UNSPECIFIED = 0;
+  CAPTION_PLACEMENT_STANDARD = 1;
+  CAPTION_PLACEMENT_LAYOUT = 2;
+}
+
+// Parsing contract for chart-extraction model output
+// (ChartExtractionOutputFormat).
+enum ChartExtractionOutputFormat {
+  CHART_EXTRACTION_OUTPUT_FORMAT_UNSPECIFIED = 0;
+  CHART_EXTRACTION_OUTPUT_FORMAT_GRANITE_VISION_CHARTS = 1;
+}
+
 // Preset VLM model types. Names mirror the upstream
 // docling.datamodel.pipeline_options.VlmModelType enum.
 enum VlmModelType {
@@ -333,8 +348,10 @@ message HttpSource {
 
 message S3Source {
   string endpoint = 1;
-  string access_key = 2;
-  string secret_key = 3;
+  // Both set, or both omitted (ambient credentials). One without the other
+  // is rejected.
+  optional string access_key = 2;
+  optional string secret_key = 3;
   string bucket = 4;
   optional string key_prefix = 5;
   bool verify_ssl = 6;
@@ -431,8 +448,10 @@ message PutTarget {
 
 message S3Target {
   string endpoint = 1;
-  string access_key = 2;
-  string secret_key = 3;
+  // Both set, or both omitted (ambient credentials). One without the other
+  // is rejected.
+  optional string access_key = 2;
+  optional string secret_key = 3;
   string bucket = 4;
   optional string key_prefix = 5;
   bool verify_ssl = 6;
@@ -590,6 +609,20 @@ message CodeFormulaVlmOptions {
   optional bool extract_formulas = 6;
 }
 
+// ChartExtractionVlmEngineOptions mirrors docling's chart extraction stage
+// (docling >= 2.129). At least one of chart2csv, chart2summary, chart2code
+// must be true; omitted flags keep the model defaults.
+message ChartExtractionVlmEngineOptions {
+  BaseVlmEngineOptions engine_options = 1;
+  VlmModelSpec model_spec = 2;
+  optional bool chart2csv = 3;
+  optional bool chart2summary = 4;
+  optional bool chart2code = 5;
+  optional ChartExtractionOutputFormat output_format = 6;
+  optional string output_format_raw = 7;
+  optional bool use_natural_language_prompts = 8;
+}
+
 // HeadingHierarchyOptions configures PDF/image section-header level inference.
 message HeadingHierarchyOptions {
   optional bool enabled = 1;
@@ -663,6 +696,13 @@ message ConvertDocumentOptions {
     HierarchicalChunkerOptions hierarchical_chunking = 49;
     HybridChunkerOptions hybrid_chunking = 50;
   }
+  // Markdown caption order (docling-core CaptionPlacement). Unset keeps the
+  // engine's standard order. Mutually exclusive values are the enum itself.
+  optional CaptionPlacement caption_placement = 51;
+  // Preset id for chart extraction. Mutually exclusive with
+  // chart_extraction_custom_config.
+  optional string chart_extraction_preset = 52;
+  optional ChartExtractionVlmEngineOptions chart_extraction_custom_config = 53;
 }
 
 // ============================================================================

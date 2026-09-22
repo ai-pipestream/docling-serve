@@ -9,7 +9,14 @@ Living checklist for the scheduled parity duty. Update when a sync arrives.
 - Always-on rule: `/work/.cursor/rules/docling-parity-duty.mdc`
 - gRParse note: `AGENTS.md` → Recurring parity duty
 
-## Status 2026-09-18 (core 2.97.1 + serve 1.34.0)
+## Status 2026-09-22 (core 2.97.2 + serve 1.34.0, slim 2.129.0)
+
+| Track | State |
+| --- | --- |
+| docling-core `feat/add-protobuf` | Merged `upstream/main` through **2.97.2** and doclang #785. Caption placement is #786 (markdown export param, not a document field). |
+| docling-serve `grpc-native-converter` | Still **1.34.0** (no newer serve release). Lock raised to docling-slim **2.129.0** and editable core **2.97.2**. Wire adds `caption_placement` (51), `chart_extraction_preset` (52), `chart_extraction_custom_config` (53), and optional S3 keys. |
+| gRParse | Same fields at tags 55–57. Layout caption order follows the core bbox-center rule. Chart preset is forwarded as `chart_preset_raw`; a custom config that is not chart2csv-only is rejected. Omitted S3 keys use `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` together, or the call is rejected. |
+| Forgejo parser-family dep PRs | **0 merged** this cycle. Held: gRParse#12 `@types/node` (CI failure), gRParse#11 CUDA 13.4.1 base image (CI failure), lol-html#11 protobuf 4.36.2 (typos and rust CI failure), opennlp#20 protoc 4.36.2 (no CI status). Still open and held: `@grpc/grpc-js` 1.14.5 demo lockfiles on libreoffice#12, pdf-inspector#8, xml#4, epub#3, markup#7, ebcdic#3, lol-html#10, calamine#10. |
 
 | Track | State |
 | --- | --- |

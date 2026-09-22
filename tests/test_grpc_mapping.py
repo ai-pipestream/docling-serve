@@ -1751,3 +1751,223 @@ def test_progress_kinds_cover_callback_union():
     }
     assert kinds, "could not introspect ProgressCallbackRequest.progress"
     assert kinds == arms, kinds ^ arms
+
+
+def _chart_extraction_config(**overrides):
+    config = docling_serve_types_pb2.ChartExtractionVlmEngineOptions(
+        engine_options=docling_serve_types_pb2.BaseVlmEngineOptions(
+            engine_type=docling_serve_types_pb2.VLM_ENGINE_TYPE_TRANSFORMERS
+        ),
+        model_spec=_minimal_vlm_model_spec(
+            name="granite-vision-v4", repo_id="ibm-granite/granite-vision-4.1-4b"
+        ),
+    )
+    for name, value in overrides.items():
+        setattr(config, name, value)
+    return config
+
+
+def test_chart_extraction_preset_and_custom_config_are_exclusive():
+    preset = docling_serve_types_pb2.ConvertDocumentOptions(
+        chart_extraction_preset="granite_vision_v4"
+    )
+    mapped = to_convert_options(preset)
+    assert mapped.chart_extraction_preset == "granite_vision_v4"
+
+    with pytest.raises(ValueError, match="empty"):
+        to_convert_options(
+            docling_serve_types_pb2.ConvertDocumentOptions(chart_extraction_preset="")
+        )
+
+    with pytest.raises(ValueError, match="both chart_extraction_preset"):
+        to_convert_options(
+            docling_serve_types_pb2.ConvertDocumentOptions(
+                chart_extraction_preset="granite_vision_v4",
+                chart_extraction_custom_config=_chart_extraction_config(),
+            )
+        )
+
+
+def test_chart_extraction_custom_config_round_trips_and_rejects_gaps():
+    from docling.datamodel.chart_extraction_options import ChartExtractionOutputFormat
+    from docling.models.inference_engines.vlm.base import VlmEngineType
+
+    mapped = to_convert_options(
+        docling_serve_types_pb2.ConvertDocumentOptions(
+            chart_extraction_custom_config=_chart_extraction_config(
+                chart2csv=True,
+                output_format=docling_serve_types_pb2.CHART_EXTRACTION_OUTPUT_FORMAT_GRANITE_VISION_CHARTS,
+            )
+        )
+    )
+    config = mapped.chart_extraction_custom_config
+    assert config.model_spec.name == "granite-vision-v4"
+    assert config.model_spec.default_repo_id == "ibm-granite/granite-vision-4.1-4b"
+    assert config.engine_options.engine_type == VlmEngineType.TRANSFORMERS
+    assert config.chart2csv is True
+    assert config.output_format == ChartExtractionOutputFormat.GRANITE_VISION_CHARTS
+
+    with pytest.raises(ValueError, match="engine_type is required"):
+        to_convert_options(
+            docling_serve_types_pb2.ConvertDocumentOptions(
+                chart_extraction_custom_config=docling_serve_types_pb2.ChartExtractionVlmEngineOptions(
+                    model_spec=_minimal_vlm_model_spec()
+                )
+            )
+        )
+
+    bare = _chart_extraction_config()
+    bare.model_spec.name = ""
+    with pytest.raises(ValueError, match="model_spec"):
+        to_convert_options(
+            docling_serve_types_pb2.ConvertDocumentOptions(
+                chart_extraction_custom_config=bare
+            )
+        )
+
+    with pytest.raises(ValueError, match="At least one of chart2csv"):
+        to_convert_options(
+            docling_serve_types_pb2.ConvertDocumentOptions(
+                chart_extraction_custom_config=_chart_extraction_config(
+                    chart2csv=False, chart2summary=False, chart2code=False
+                )
+            )
+        )
+
+
+def test_chart_extraction_output_format_covers_pydantic():
+    from docling.datamodel.chart_extraction_options import ChartExtractionOutputFormat
+
+    pydantic_names = {member.name for member in ChartExtractionOutputFormat}
+    proto_names = {
+        name.removeprefix("CHART_EXTRACTION_OUTPUT_FORMAT_")
+        for name, number in docling_serve_types_pb2.ChartExtractionOutputFormat.items()
+        if number != 0
+    }
+    assert pydantic_names == proto_names
+
+
+def test_s3_credentials_are_paired():
+    paired = to_task_sources(
+        [
+            docling_serve_types_pb2.Source(
+                s3=docling_serve_types_pb2.S3Source(
+                    endpoint="s3.example.com",
+                    bucket="bucket",
+                    verify_ssl=True,
+                )
+            )
+        ]
+    )
+    assert paired[0].access_key is None
+    assert paired[0].secret_key is None
+
+    with pytest.raises(ValueError, match="provided together"):
+        to_task_sources(
+            [
+                docling_serve_types_pb2.Source(
+                    s3=docling_serve_types_pb2.S3Source(
+                        endpoint="s3.example.com",
+                        access_key="only-one",
+                        bucket="bucket",
+                    )
+                )
+            ]
+        )
+
+    with pytest.raises(ValueError, match="non-empty"):
+        to_task_target(
+            docling_serve_types_pb2.Target(
+                s3=docling_serve_types_pb2.S3Target(
+                    endpoint="s3.example.com",
+                    access_key="",
+                    secret_key="",
+                    bucket="bucket",
+                )
+            )
+        )
+
+
+def test_caption_placement_reexports_markdown_and_rejects_unspecified():
+    from types import SimpleNamespace
+
+    from docling_core.types.doc.base import BoundingBox, CoordOrigin, Size
+    from docling_core.types.doc.document import (
+        DocItemLabel,
+        DoclingDocument,
+        ProvenanceItem,
+    )
+    from docling_core.types.doc.base import CaptionPlacement
+
+    from docling_serve.grpc.mapping import caption_placement_from_options
+
+    doc = DoclingDocument(name="cap")
+    doc.add_page(page_no=1, size=Size(width=100, height=200))
+    caption = doc.add_text(
+        label=DocItemLabel.CAPTION,
+        text="THE CAPTION",
+        prov=ProvenanceItem(
+            page_no=1,
+            bbox=BoundingBox(l=0, r=10, t=150, b=170, coord_origin=CoordOrigin.TOPLEFT),
+            charspan=(0, 0),
+        ),
+    )
+    doc.add_picture(
+        caption=caption,
+        prov=ProvenanceItem(
+            page_no=1,
+            bbox=BoundingBox(l=0, r=10, t=50, b=100, coord_origin=CoordOrigin.TOPLEFT),
+            charspan=(0, 0),
+        ),
+    )
+    payload = SimpleNamespace(
+        json_content=doc,
+        md_content="ENGINE MARKDOWN",
+        html_content=None,
+        text_content=None,
+        doctags_content=None,
+        doclang_content=None,
+    )
+
+    untouched = _build_exports(payload, {OutputFormat.MARKDOWN})
+    assert untouched.md == "ENGINE MARKDOWN"
+
+    laid_out = _build_exports(
+        payload, {OutputFormat.MARKDOWN}, caption_placement=CaptionPlacement.LAYOUT
+    )
+    assert "<!-- image -->" in laid_out.md
+    assert laid_out.md.index("<!-- image -->") < laid_out.md.index("THE CAPTION")
+
+    standard = _build_exports(
+        payload, {OutputFormat.MARKDOWN}, caption_placement=CaptionPlacement.STANDARD
+    )
+    assert standard.md.index("THE CAPTION") < standard.md.index("<!-- image -->")
+
+    missing = SimpleNamespace(
+        json_content=None,
+        md_content="ENGINE MARKDOWN",
+        html_content=None,
+        text_content=None,
+        doctags_content=None,
+        doclang_content=None,
+    )
+    with pytest.raises(ValueError, match="json_content is missing"):
+        _build_exports(
+            missing, {OutputFormat.MARKDOWN}, caption_placement=CaptionPlacement.LAYOUT
+        )
+
+    with pytest.raises(ValueError, match="unspecified or unknown"):
+        caption_placement_from_options(
+            docling_serve_types_pb2.ConvertDocumentOptions(
+                caption_placement=docling_serve_types_pb2.CAPTION_PLACEMENT_UNSPECIFIED
+            )
+        )
+    assert (
+        caption_placement_from_options(
+            docling_serve_types_pb2.ConvertDocumentOptions(
+                caption_placement=docling_serve_types_pb2.CAPTION_PLACEMENT_LAYOUT
+            )
+        )
+        == CaptionPlacement.LAYOUT
+    )
+
