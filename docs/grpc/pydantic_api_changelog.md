@@ -240,3 +240,13 @@ upstream so the VLM extras resolve.
 | `chart_extraction_preset` and `chart_extraction_custom_config: ChartExtractionVlmEngineOptions` (slim 2.129) | additive | engine | `ChartExtractionOutputFormat`, `ChartExtractionVlmEngineOptions`. Fields 52 and 53, mutually exclusive. Engine type and model spec are required on the custom config. |
 | `S3Coordinates.access_key` / `secret_key` optional; both omitted means ambient credentials | additive, wire-compatible | engine | `S3Source` and `S3Target` fields 2 and 3 are `optional string`. Exactly one key, or an empty key, is rejected. |
 
+## 2026-10-01 — core 2.99.0, serve 1.35.0, slim 2.130.0
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| `DocumentOrigin` accepts `audio/m4a` and `audio/mp4` (#789) | validator-only | core | `mimetype` is already `string`; no new tag. Round-trip test added. |
+| `PdfWidget.widget_field_flags` / `widget_appearance_state` (#733) | additive on `SegmentedPage`, not `DoclingDocument.PageItem` | core | Out of `docling_document.proto` until widgets hang off `PageItem`. |
+| Doclang `include_namespace` / `image_mode` export knobs (#809); furniture/orphan repairs (#810) | serializer / method | core | No document or convert-option field. |
+| `allow_custom_chart_extraction_config` and chart-extraction preset/engine allowlists (#706) | additive (settings/policy) | serve | No new convert-option tag; gRPC already reuses `validate_convert_options`. Custom chart config stays fields 52/53. |
+| `enable_api_docs`, Prometheus-gated `/metrics`, RQ multi-queue drain, RQ wait metrics, Gradio→Vite UI (#707/#710/#711/#714) | serve process / UI | serve | Not convert-request proto. |
+

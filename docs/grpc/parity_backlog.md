@@ -9,6 +9,15 @@ Living checklist for the scheduled parity duty. Update when a sync arrives.
 - Always-on rule: `/work/.cursor/rules/docling-parity-duty.mdc`
 - gRParse note: `AGENTS.md` → Recurring parity duty
 
+## Status 2026-10-01 (core 2.99.0 + serve 1.35.0, slim 2.130.0)
+
+| Track | State |
+| --- | --- |
+| docling-core `feat/add-protobuf` | Merged `upstream/main` through **2.99.0**. Document proto unchanged: origin MIME is still a string; AcroForm widget flags live on `SegmentedPage`, not `PageItem`. |
+| docling-serve `grpc-native-converter` | Cherry-picked 1.35.0 (UI, chart-extraction policy, RQ metrics, `enable_api_docs`). Convert-option tags 51–53 already covered caption placement and chart extraction. Lock: jobkit **3.8.0**, slim **2.130.0**. |
+| gRParse | No new document-wire fields this cycle. |
+| Forgejo parser-family dep PRs | **0 merged**. Held: gRParse#12 `@types/node` v26, gRParse#11 CUDA 13.4.2; `@grpc/grpc-js` 1.14.5 demo lockfiles; lol-html#11 protobuf 4.36.2; opennlp#20 protoc 4.36.2; opennlp#21 slf4j 2.0.20; pdf-inspector#9 marked 18.0.14. |
+
 ## Status 2026-09-22 (core 2.97.2 + serve 1.34.0, slim 2.129.0)
 
 | Track | State |
