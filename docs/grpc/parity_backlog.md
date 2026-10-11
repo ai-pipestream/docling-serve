@@ -9,6 +9,15 @@ Living checklist for the scheduled parity duty. Update when a sync arrives.
 - Always-on rule: `/work/.cursor/rules/docling-parity-duty.mdc`
 - gRParse note: `AGENTS.md` → Recurring parity duty
 
+## Status 2026-10-11 (core 2.101.1 + serve 1.36.0, slim 2.132.0)
+
+| Track | State |
+| --- | --- |
+| docling-core `feat/add-protobuf` | Merged `upstream/main` through **2.101.1**. Document proto unchanged (MIME allowlist / DocLang export params / field-item validator only). Schema walker green: 541 Pydantic fields. |
+| docling-serve `grpc-native-converter` | Cherry-picked 1.36.0 (viz UI, lock). Wire: `INPUT_FORMAT_IWORK_KEYNOTE = 35`. Lock: jobkit **3.8.1**, slim **2.132.0**, editable core **2.101.1**. |
+| gRParse | Port `INPUT_FORMAT_IWORK_KEYNOTE` if MIME/ext mapping not already present. |
+| Forgejo parser-family dep PRs | (sweep this cycle) |
+
 ## Status 2026-10-01 (core 2.99.0 + serve 1.35.0, slim 2.130.0)
 
 | Track | State |

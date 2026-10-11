@@ -185,6 +185,10 @@ def test_enum_mappings():
         == InputFormat.AFP
     )
     assert (
+        _map_input_format(docling_serve_types_pb2.INPUT_FORMAT_IWORK_KEYNOTE)
+        == InputFormat.IWORK_KEYNOTE
+    )
+    assert (
         _map_output_format(docling_serve_types_pb2.OUTPUT_FORMAT_YAML)
         == OutputFormat.YAML
     )
@@ -811,6 +815,7 @@ def test_to_convert_options_new_enum_values():
             docling_serve_types_pb2.INPUT_FORMAT_VTT,
             docling_serve_types_pb2.INPUT_FORMAT_XML_XBRL,
             docling_serve_types_pb2.INPUT_FORMAT_IWORK_PAGES,
+            docling_serve_types_pb2.INPUT_FORMAT_IWORK_KEYNOTE,
             docling_serve_types_pb2.INPUT_FORMAT_EBCDIC,
         ],
         to_formats=[
@@ -828,6 +833,7 @@ def test_to_convert_options_new_enum_values():
         InputFormat.VTT,
         InputFormat.XML_XBRL,
         InputFormat.IWORK_PAGES,
+        InputFormat.IWORK_KEYNOTE,
         InputFormat.EBCDIC,
     ]
     assert mapped.to_formats == [OutputFormat.YAML, OutputFormat.VTT]

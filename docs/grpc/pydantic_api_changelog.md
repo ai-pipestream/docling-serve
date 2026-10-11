@@ -202,6 +202,13 @@ upstream so the VLM extras resolve.
 | --- | --- | --- | --- |
 | `S3Coordinates.region` on request sources/targets (jobkit / slim; also server `artifact_storage_region`) | additive | serve | `S3Source.region = 8`, `S3Target.region = 8`; mapping passes through when set. Managed-artifact env was already wired in settings/orchestrator_factory. |
 
+## 2026-10-11 — serve 1.36.0 / slim 2.132 / core 2.101.1
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| `InputFormat.IWORK_KEYNOTE` (`iwork_keynote`) | additive | engine | `INPUT_FORMAT_IWORK_KEYNOTE = 35` + `_map_input_format` entry; drift guard `test_input_format_proto_covers_pydantic`. |
+| DoclingDocument origin allowlist `application/rtf`; DocLang xsize/ysize export params; field-item key cardinality validator | additive / behavioural | core | No document-wire change (`origin.mimetype` remains string; export params are method args). Schema walker: 541 Pydantic fields covered. |
+
 ## Not yet accommodated
 
 - `TaskStatusResponse.task_status` is typed as `ConversionStatus` upstream

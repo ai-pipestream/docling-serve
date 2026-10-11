@@ -149,6 +149,7 @@ def _map_input_format(value: int) -> Optional[InputFormat]:
         "INPUT_FORMAT_VIDEO": InputFormat.VIDEO,
         "INPUT_FORMAT_BOXNOTE": InputFormat.BOXNOTE,
         "INPUT_FORMAT_IWORK_PAGES": InputFormat.IWORK_PAGES,
+        "INPUT_FORMAT_IWORK_KEYNOTE": InputFormat.IWORK_KEYNOTE,
         "INPUT_FORMAT_EBCDIC": InputFormat.EBCDIC,
         "INPUT_FORMAT_RTF": InputFormat.RTF,
         "INPUT_FORMAT_MHTML": InputFormat.MHTML,
