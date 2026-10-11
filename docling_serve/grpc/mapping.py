@@ -149,7 +149,11 @@ def _map_input_format(value: int) -> Optional[InputFormat]:
         "INPUT_FORMAT_VIDEO": InputFormat.VIDEO,
         "INPUT_FORMAT_BOXNOTE": InputFormat.BOXNOTE,
         "INPUT_FORMAT_IWORK_PAGES": InputFormat.IWORK_PAGES,
+        "INPUT_FORMAT_IWORK_KEYNOTE": InputFormat.IWORK_KEYNOTE,
         "INPUT_FORMAT_EBCDIC": InputFormat.EBCDIC,
+        "INPUT_FORMAT_RTF": InputFormat.RTF,
+        "INPUT_FORMAT_MHTML": InputFormat.MHTML,
+        "INPUT_FORMAT_AFP": InputFormat.AFP,
     }
     return mapping.get(name)
 
@@ -198,6 +202,7 @@ def _map_ocr_engine(value: int) -> Optional[str]:
         "OCR_ENGINE_RAPIDOCR": "rapidocr",
         "OCR_ENGINE_TESSEROCR": "tesserocr",
         "OCR_ENGINE_TESSERACT": "tesseract",
+        "OCR_ENGINE_TESSERACT_CLI": "tesseract_cli",
     }
     return mapping.get(name)
 
@@ -206,6 +211,8 @@ def _map_pdf_backend(value: int) -> Optional[PdfBackend]:
     name = _enum_name(docling_serve_types_pb2.PdfBackend, value)
     if not name:
         return None
+    # REST string values (slim 2.128+): THREADED_DOCLING_PARSE == "docling_parse",
+    # deprecated DOCLING_PARSE == "_docling_parse". Proto tags are unchanged.
     mapping = {
         "PDF_BACKEND_PYPDFIUM2": PdfBackend.PYPDFIUM2,
         "PDF_BACKEND_DOCLING_PARSE": PdfBackend.DOCLING_PARSE,
@@ -590,6 +597,75 @@ def _to_code_formula_vlm_options(proto) -> CodeFormulaVlmOptions:
     return CodeFormulaVlmOptions.model_validate(data)
 
 
+def _to_chart_extraction_vlm_engine_options(proto):
+    from docling.datamodel.chart_extraction_options import (
+        ChartExtractionOutputFormat,
+        ChartExtractionVlmEngineOptions,
+    )
+
+    if (
+        not proto.HasField("engine_options")
+        or proto.engine_options.engine_type
+        == docling_serve_types_pb2.VLM_ENGINE_TYPE_UNSPECIFIED
+    ):
+        raise ValueError(
+            "chart_extraction_custom_config.engine_options.engine_type is required"
+        )
+    engine = _map_vlm_engine_type(proto.engine_options.engine_type)
+    if engine is None:
+        raise ValueError(
+            "chart_extraction_custom_config.engine_options.engine_type is not a known engine"
+        )
+    if (
+        not proto.HasField("model_spec")
+        or not proto.model_spec.name
+        or not proto.model_spec.default_repo_id
+    ):
+        raise ValueError(
+            "chart_extraction_custom_config.model_spec requires name and default_repo_id"
+        )
+    data: dict = {
+        "engine_options": BaseVlmEngineOptions(engine_type=engine),
+        "model_spec": _to_vlm_model_spec(proto.model_spec),
+    }
+    if proto.HasField("chart2csv"):
+        data["chart2csv"] = proto.chart2csv
+    if proto.HasField("chart2summary"):
+        data["chart2summary"] = proto.chart2summary
+    if proto.HasField("chart2code"):
+        data["chart2code"] = proto.chart2code
+    if proto.HasField("output_format"):
+        if (
+            proto.output_format
+            == docling_serve_types_pb2.CHART_EXTRACTION_OUTPUT_FORMAT_UNSPECIFIED
+        ):
+            if not proto.output_format_raw:
+                raise ValueError(
+                    "chart_extraction_custom_config.output_format is unspecified"
+                )
+            data["output_format"] = proto.output_format_raw
+        elif (
+            proto.output_format
+            == docling_serve_types_pb2.CHART_EXTRACTION_OUTPUT_FORMAT_GRANITE_VISION_CHARTS
+        ):
+            if proto.output_format_raw and proto.output_format_raw != (
+                ChartExtractionOutputFormat.GRANITE_VISION_CHARTS.value
+            ):
+                raise ValueError(
+                    "chart_extraction_custom_config.output_format and output_format_raw disagree"
+                )
+            data["output_format"] = ChartExtractionOutputFormat.GRANITE_VISION_CHARTS
+        else:
+            raise ValueError(
+                "chart_extraction_custom_config.output_format is not a known format"
+            )
+    elif proto.output_format_raw:
+        data["output_format"] = proto.output_format_raw
+    if proto.HasField("use_natural_language_prompts"):
+        data["use_natural_language_prompts"] = proto.use_natural_language_prompts
+    return ChartExtractionVlmEngineOptions.model_validate(data)
+
+
 def _to_vlm_model_local(proto) -> VlmModelLocal:
     data: dict = {}
     if proto.HasField("repo_id"):
@@ -644,6 +720,26 @@ def _to_vlm_model_api(proto) -> VlmModelApi:
     return VlmModelApi.model_validate(data)
 
 
+def _s3_credential_fields(message, label: str) -> dict:
+    """Both keys, or neither. A single key or an empty key is an error."""
+    has_access = message.HasField("access_key")
+    has_secret = message.HasField("secret_key")
+    if has_access != has_secret:
+        raise ValueError(
+            f"{label}: access_key and secret_key must be provided together"
+        )
+    if not has_access:
+        return {}
+    if not message.access_key or not message.secret_key:
+        raise ValueError(
+            f"{label}: access_key and secret_key must be non-empty when set"
+        )
+    return {
+        "access_key": message.access_key,
+        "secret_key": message.secret_key,
+    }
+
+
 def to_task_sources(proto_sources: Iterable[docling_serve_types_pb2.Source]):
     sources = []
     for i, source in enumerate(proto_sources):
@@ -668,16 +764,17 @@ def to_task_sources(proto_sources: Iterable[docling_serve_types_pb2.Source]):
             s3_src = source.s3
             data = {
                 "endpoint": s3_src.endpoint,
-                "access_key": s3_src.access_key,
-                "secret_key": s3_src.secret_key,
                 "bucket": s3_src.bucket,
                 "key_prefix": s3_src.key_prefix
                 if s3_src.HasField("key_prefix")
                 else "",
                 "verify_ssl": s3_src.verify_ssl,
             }
+            data.update(_s3_credential_fields(s3_src, "S3Source"))
             if s3_src.HasField("max_num_elements"):
                 data["max_num_elements"] = s3_src.max_num_elements
+            if s3_src.HasField("region"):
+                data["region"] = s3_src.region
             sources.append(S3SourceRequest.model_validate(data))
         elif kind == "azure_blob":
             az = source.azure_blob
@@ -743,14 +840,15 @@ def to_task_target(proto_target: Optional[docling_serve_types_pb2.Target]):
         s3_tgt = proto_target.s3
         data = {
             "endpoint": s3_tgt.endpoint,
-            "access_key": s3_tgt.access_key,
-            "secret_key": s3_tgt.secret_key,
             "bucket": s3_tgt.bucket,
             "key_prefix": s3_tgt.key_prefix if s3_tgt.HasField("key_prefix") else "",
             "verify_ssl": s3_tgt.verify_ssl,
         }
+        data.update(_s3_credential_fields(s3_tgt, "S3Target"))
         if s3_tgt.HasField("max_num_elements"):
             data["max_num_elements"] = s3_tgt.max_num_elements
+        if s3_tgt.HasField("region"):
+            data["region"] = s3_tgt.region
         return S3Target.model_validate(data)
     if kind == "presigned_url":
         return PresignedUrlTarget()
@@ -849,6 +947,25 @@ def requested_output_formats(
         if v is not None
     ]
     return set(values) if values else set()
+
+
+def caption_placement_from_options(
+    proto_options: Optional[docling_serve_types_pb2.ConvertDocumentOptions],
+):
+    """Return the core CaptionPlacement when the request sets one.
+
+    Unset keeps the engine markdown. UNSPECIFIED and unknown values fail.
+    """
+    if proto_options is None or not proto_options.HasField("caption_placement"):
+        return None
+    from docling_core.types.doc.base import CaptionPlacement
+
+    value = proto_options.caption_placement
+    if value == docling_serve_types_pb2.CAPTION_PLACEMENT_STANDARD:
+        return CaptionPlacement.STANDARD
+    if value == docling_serve_types_pb2.CAPTION_PLACEMENT_LAYOUT:
+        return CaptionPlacement.LAYOUT
+    raise ValueError("caption_placement is unspecified or unknown")
 
 
 def to_convert_options(
@@ -1059,6 +1176,24 @@ def to_convert_options(
     if proto_options.HasField("code_formula_custom_config"):
         data["code_formula_custom_config"] = _to_code_formula_vlm_options(
             proto_options.code_formula_custom_config
+        )
+
+    has_chart_preset = proto_options.HasField("chart_extraction_preset")
+    has_chart_config = proto_options.HasField("chart_extraction_custom_config")
+    if has_chart_preset and has_chart_config:
+        raise ValueError(
+            "Cannot specify both chart_extraction_preset and "
+            "chart_extraction_custom_config."
+        )
+    if has_chart_preset:
+        if not proto_options.chart_extraction_preset:
+            raise ValueError("chart_extraction_preset is empty")
+        data["chart_extraction_preset"] = proto_options.chart_extraction_preset
+    if has_chart_config:
+        data["chart_extraction_custom_config"] = (
+            _to_chart_extraction_vlm_engine_options(
+                proto_options.chart_extraction_custom_config
+            )
         )
 
     if proto_options.table_structure_custom_config:
@@ -1274,6 +1409,38 @@ def _timings_to_proto(timings: dict[str, ProfilingItem]) -> dict[str, float]:
     return {key: item.total() for key, item in timings.items()}
 
 
+def _profiling_item_to_proto(
+    item: ProfilingItem,
+) -> docling_serve_types_pb2.ProfilingItem:
+    scope_text = str(
+        item.scope.value if isinstance(item.scope, enum.Enum) else item.scope
+    )
+    scope_map = {
+        "page": docling_serve_types_pb2.ProfilingScope.PROFILING_SCOPE_PAGE,
+        "document": docling_serve_types_pb2.ProfilingScope.PROFILING_SCOPE_DOCUMENT,
+    }
+    scope_tag = scope_map.get(scope_text)
+    message = docling_serve_types_pb2.ProfilingItem(
+        count=int(item.count),
+        times=list(item.times or []),
+        start_timestamps=[
+            ts.isoformat().replace("+00:00", "Z") if hasattr(ts, "isoformat") else str(ts)
+            for ts in (item.start_timestamps or [])
+        ],
+    )
+    if scope_tag is not None:
+        message.scope = scope_tag
+    else:
+        message.scope_raw = scope_text
+    return message
+
+
+def _profiling_to_proto(
+    timings: dict[str, ProfilingItem],
+) -> dict[str, docling_serve_types_pb2.ProfilingItem]:
+    return {key: _profiling_item_to_proto(item) for key, item in timings.items()}
+
+
 def _enum_and_raw(
     value: enum.Enum | str, mapping: dict[str, int]
 ) -> tuple[int, Optional[str]]:
@@ -1404,6 +1571,7 @@ def document_artifact_item_to_proto(
         status=status_enum,
         errors=[_error_item_to_proto(err) for err in item.errors],
         timings=_timings_to_proto(item.timings),
+        profiling=_profiling_to_proto(item.timings),
         artifacts=[artifact_ref_to_proto(ref) for ref in item.artifacts],
     )
     if status_raw is not None:
@@ -1416,6 +1584,7 @@ def document_artifact_item_to_proto(
 def _build_exports(
     doc,
     requested_formats: Optional[set[OutputFormat]],
+    caption_placement=None,
 ) -> Optional[docling_serve_types_pb2.DocumentExports]:
     def wants(fmt: OutputFormat) -> bool:
         return requested_formats is None or fmt in requested_formats
@@ -1426,9 +1595,20 @@ def _build_exports(
     if wants(OutputFormat.JSON) and doc.json_content is not None:
         exports.json = doc.json_content.model_dump_json()
         has_any = True
-    if wants(OutputFormat.MARKDOWN) and doc.md_content is not None:
-        exports.md = doc.md_content
-        has_any = True
+    if wants(OutputFormat.MARKDOWN):
+        if caption_placement is not None:
+            if doc.json_content is None:
+                raise ValueError(
+                    "caption_placement requires the DoclingDocument; "
+                    "json_content is missing"
+                )
+            exports.md = doc.json_content.export_to_markdown(
+                caption_placement=caption_placement
+            )
+            has_any = True
+        elif doc.md_content is not None:
+            exports.md = doc.md_content
+            has_any = True
     if wants(OutputFormat.HTML) and doc.html_content is not None:
         exports.html = doc.html_content
         has_any = True
@@ -1441,19 +1621,50 @@ def _build_exports(
     if wants(OutputFormat.DOCLANG) and doc.doclang_content is not None:
         exports.doclang = doc.doclang_content
         has_any = True
-    # ExportDocumentResponse has no latex_content slot (jobkit 3.5); REST
-    # serializes LaTeX on demand from the DoclingDocument, and so do we.
+    # ExportDocumentResponse has no latex/yaml/vtt/html_split slots (jobkit
+    # in-body model); REST artifact targets write those formats to disk, and
+    # for in-body gRPC we serialize on demand from the DoclingDocument.
     if wants(OutputFormat.LATEX) and doc.json_content is not None:
         from docling_core.transforms.serializer.latex import LaTeXDocSerializer
 
         exports.latex = LaTeXDocSerializer(doc=doc.json_content).serialize().text
         has_any = True
+    if wants(OutputFormat.YAML) and doc.json_content is not None:
+        from io import StringIO
+
+        import yaml
+
+        stream = StringIO()
+        yaml.dump(
+            doc.json_content.export_to_dict(),
+            stream,
+            default_flow_style=False,
+        )
+        exports.yaml = stream.getvalue()
+        has_any = True
+    if wants(OutputFormat.VTT) and doc.json_content is not None:
+        exports.vtt = doc.json_content.export_to_vtt()
+        has_any = True
+    if wants(OutputFormat.HTML_SPLIT_PAGE) and doc.json_content is not None:
+        exports.html_split_page = doc.json_content.export_to_html(split_page_view=True)
+        has_any = True
+    if wants(OutputFormat.DCLX) and doc.json_content is not None:
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as staging:
+            archive = Path(staging) / "document.dclx"
+            doc.json_content.save_as_doclang_archive(archive)
+            exports.dclx = archive.read_bytes()
+            has_any = True
 
     return exports if has_any else None
 
 
 def export_document_to_proto(
-    doc, requested_formats: Optional[set[OutputFormat]] = None
+    doc,
+    requested_formats: Optional[set[OutputFormat]] = None,
+    caption_placement=None,
 ) -> docling_serve_types_pb2.ExportDocumentResponse:
     message = docling_serve_types_pb2.ExportDocumentResponse(filename=doc.filename)
     # doc.json_content is the live Pydantic DoclingDocument object (not a JSON string).
@@ -1461,20 +1672,26 @@ def export_document_to_proto(
     # For gRPC, we convert it field-by-field into the native protobuf representation.
     if doc.json_content is not None:
         message.doc.CopyFrom(_docling_document_to_proto(doc.json_content))
-    exports = _build_exports(doc, requested_formats)
+    exports = _build_exports(
+        doc, requested_formats, caption_placement=caption_placement
+    )
     if exports is not None:
         message.exports.CopyFrom(exports)
     return message
 
 
 def document_response_to_proto(
-    doc, requested_formats: Optional[set[OutputFormat]] = None
+    doc,
+    requested_formats: Optional[set[OutputFormat]] = None,
+    caption_placement=None,
 ) -> docling_serve_types_pb2.DocumentResponse:
     message = docling_serve_types_pb2.DocumentResponse(filename=doc.filename)
     # See export_document_to_proto for why this field is called json_content.
     if doc.json_content is not None:
         message.doc.CopyFrom(_docling_document_to_proto(doc.json_content))
-    exports = _build_exports(doc, requested_formats)
+    exports = _build_exports(
+        doc, requested_formats, caption_placement=caption_placement
+    )
     if exports is not None:
         message.exports.CopyFrom(exports)
     return message
@@ -1484,14 +1701,20 @@ def convert_result_to_proto(
     result: DocumentResultItem,
     processing_time: float,
     requested_formats: Optional[set[OutputFormat]] = None,
+    caption_placement=None,
 ) -> docling_serve_types_pb2.ConvertDocumentResponse:
     status_enum, status_raw = _conversion_status_enum_and_raw(result.status)
     response = docling_serve_types_pb2.ConvertDocumentResponse(
-        document=document_response_to_proto(result.document, requested_formats),
+        document=document_response_to_proto(
+            result.document,
+            requested_formats,
+            caption_placement=caption_placement,
+        ),
         errors=[_error_item_to_proto(err) for err in result.errors],
         processing_time=processing_time,
         status=status_enum,
         timings=_timings_to_proto(result.timings),
+        profiling=_profiling_to_proto(result.timings),
     )
     if status_raw is not None:
         response.status_raw = status_raw
@@ -1549,6 +1772,7 @@ def set_convert_result(
     message,
     task_result: DoclingTaskResult,
     requested_formats: Optional[set[OutputFormat]] = None,
+    caption_placement=None,
 ) -> None:
     """Fill the convert result oneof on any wrapper that declares it.
 
@@ -1560,7 +1784,10 @@ def set_convert_result(
     if isinstance(result, DocumentResultItem):
         message.response.CopyFrom(
             convert_result_to_proto(
-                result, task_result.processing_time, requested_formats
+                result,
+                task_result.processing_time,
+                requested_formats,
+                caption_placement=caption_placement,
             )
         )
     elif isinstance(result, ZipArchiveResult):
@@ -1579,13 +1806,17 @@ def set_chunk_result(
     message,
     task_result: DoclingTaskResult,
     requested_formats: Optional[set[OutputFormat]] = None,
+    caption_placement=None,
 ) -> None:
     """Fill the chunk result oneof (ChunkDocumentResponse | TaskFailureResult)."""
     result = task_result.result
     if isinstance(result, ChunkedDocumentResult):
         message.response.CopyFrom(
             chunk_result_to_proto(
-                result, task_result.processing_time, requested_formats
+                result,
+                task_result.processing_time,
+                requested_formats,
+                caption_placement=caption_placement,
             )
         )
     else:
@@ -1598,6 +1829,7 @@ def chunk_result_to_proto(
     result: ChunkedDocumentResult,
     processing_time: float,
     requested_formats: Optional[set[OutputFormat]] = None,
+    caption_placement=None,
 ) -> docling_serve_types_pb2.ChunkDocumentResponse:
     chunks = []
     for chunk in result.chunks:
@@ -1622,10 +1854,15 @@ def chunk_result_to_proto(
         status_enum, status_raw = _conversion_status_enum_and_raw(doc.status)
         document = docling_serve_types_pb2.Document(
             kind=doc.kind,
-            content=export_document_to_proto(doc.document, requested_formats),
+            content=export_document_to_proto(
+                doc.document,
+                requested_formats,
+                caption_placement=caption_placement,
+            ),
             status=status_enum,
             errors=[_error_item_to_proto(err) for err in doc.errors],
             timings=_timings_to_proto(doc.timings),
+            profiling=_profiling_to_proto(doc.timings),
         )
         if status_raw is not None:
             document.status_raw = status_raw
@@ -1637,6 +1874,7 @@ def chunk_result_to_proto(
         chunks=chunks,
         documents=documents,
         processing_time=processing_time,
+        chunking_info=_dict_to_scalar_map(result.chunking_info or {}),
     )
 
 

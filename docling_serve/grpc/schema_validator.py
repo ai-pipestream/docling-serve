@@ -61,6 +61,10 @@ ALLOWED_COERCIONS: dict[str, tuple[str, str]] = {
         "union<message:CodeFormulaVlmOptions,dict>",
         "message:CodeFormulaVlmOptions",
     ),
+    "chart_extraction_custom_config": (
+        "optional<union<message:ChartExtractionVlmEngineOptions,dict>>",
+        "message:ChartExtractionVlmEngineOptions",
+    ),
     # --- Response side ---------------------------------------------------
     # REST inlines the full ProfilingItem per timing key; gRPC carries the
     # aggregate ProfilingItem.total() seconds (see mapping._timings_to_proto).
@@ -73,6 +77,9 @@ ALLOWED_COERCIONS: dict[str, tuple[str, str]] = {
     # Chunk.metadata is an open `dict | None` in Pydantic (chunker-defined);
     # gRPC flattens it into a typed map<string, ScalarValue>.
     "**.metadata": ("optional<dict>", "map<string,message:ScalarValue>"),
+    # ChunkedDocumentResult.chunking_info is Optional[dict] (chunker options
+    # dump). Carried on the gRPC ChunkDocumentResponse; REST omits it today.
+    "**.chunking_info": ("optional<dict>", "map<string,message:ScalarValue>"),
     # TaskStatusResponse.task_status is typed as ConversionStatus upstream
     # (same string vocabulary as TaskStatus: pending/started/success/failure).
     "TaskStatusPollResponse.task_status": (
@@ -255,6 +262,21 @@ _PROTO_ONLY_PREFIXES: set[str] = {
     "chart_data.grid",
 }
 
+# Proto field names that enrich a Pydantic source already represented under a
+# different wire name (or that REST omits while jobkit still carries). Matched
+# at any nesting depth so Document.profiling and documents.profiling both pass.
+_PROTO_ONLY_FIELD_NAMES: set[str] = {
+    # Full ProfilingItem samples; `timings` already carries totals from the
+    # same Pydantic `dict[str, ProfilingItem]`.
+    "profiling",
+    # jobkit ChunkedDocumentResult.chunking_info; REST ChunkDocumentResponse
+    # drops it in response_preparation.
+    "chunking_info",
+    # docling-core MarkdownParams.caption_placement. ConvertDocumentsOptions
+    # does not carry it; gRPC applies it when re-exporting Markdown.
+    "caption_placement",
+}
+
 # Wire form of Pydantic `extra="allow"` payloads on serve connector models
 # (GenericSource.attributes / GenericTarget.attributes). The Pydantic side has
 # no declared field for the extras, so the map is matched by type, not name.
@@ -326,6 +348,7 @@ _RAW_FALLBACK_SUFFIXES: set[str] = {
     "mean_grade_raw",
     "low_grade_raw",
     "artifact_type_raw",
+    "output_format_raw",
     "task_type_raw",
     "component_type_raw",
     "document_type_raw",
@@ -1024,6 +1047,10 @@ def _compare_fields(
                 path == pfx or path.startswith(pfx + ".")
                 for pfx in _PROTO_ONLY_PREFIXES
             ):
+                continue
+            # Enrichment fields that re-express (or extend) a Pydantic source
+            # already covered under another wire name / message.
+            if any(part in _PROTO_ONLY_FIELD_NAMES for part in path.split(".")):
                 continue
             # Enum fallback *_raw companion fields.
             parts = path.rsplit(".", 1)

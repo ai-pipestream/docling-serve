@@ -173,6 +173,22 @@ def test_enum_mappings():
         == InputFormat.EBCDIC
     )
     assert (
+        _map_input_format(docling_serve_types_pb2.INPUT_FORMAT_RTF)
+        == InputFormat.RTF
+    )
+    assert (
+        _map_input_format(docling_serve_types_pb2.INPUT_FORMAT_MHTML)
+        == InputFormat.MHTML
+    )
+    assert (
+        _map_input_format(docling_serve_types_pb2.INPUT_FORMAT_AFP)
+        == InputFormat.AFP
+    )
+    assert (
+        _map_input_format(docling_serve_types_pb2.INPUT_FORMAT_IWORK_KEYNOTE)
+        == InputFormat.IWORK_KEYNOTE
+    )
+    assert (
         _map_output_format(docling_serve_types_pb2.OUTPUT_FORMAT_YAML)
         == OutputFormat.YAML
     )
@@ -286,6 +302,20 @@ def test_pdf_backend_proto_covers_pydantic():
     )
 
 
+def test_pdf_backend_rest_string_values_match_slim_2128():
+    """slim 2.128 renamed REST strings; proto tags must still hit the same members."""
+    assert PdfBackend.THREADED_DOCLING_PARSE.value == "docling_parse"
+    assert PdfBackend.DOCLING_PARSE.value == "_docling_parse"
+    assert (
+        _map_pdf_backend(docling_serve_types_pb2.PDF_BACKEND_THREADED_DOCLING_PARSE)
+        == PdfBackend.THREADED_DOCLING_PARSE
+    )
+    assert (
+        _map_pdf_backend(docling_serve_types_pb2.PDF_BACKEND_DOCLING_PARSE)
+        == PdfBackend.DOCLING_PARSE
+    )
+
+
 def test_to_convert_options_unsupported_pipeline_tag_rejected(monkeypatch):
     """A pipeline tag the proto defines but the installed engine lacks must raise
     rather than silently fall back to the default pipeline."""
@@ -297,6 +327,15 @@ def test_to_convert_options_unsupported_pipeline_tag_rejected(monkeypatch):
     )
     with pytest.raises(ValueError, match="PROCESSING_PIPELINE_NATIVE"):
         to_convert_options(opts)
+
+
+def test_to_convert_options_native_pipeline_maps():
+    """PROCESSING_PIPELINE_NATIVE is live on docling-slim >= 2.126."""
+    opts = docling_serve_types_pb2.ConvertDocumentOptions(
+        pipeline=docling_serve_types_pb2.PROCESSING_PIPELINE_NATIVE
+    )
+    mapped = to_convert_options(opts)
+    assert mapped.pipeline == ProcessingPipeline.NATIVE
 
 
 def test_to_convert_options_unknown_pipeline_int_dropped():
@@ -392,6 +431,57 @@ def test_build_exports_doclang_and_latex():
         assert exports.HasField("latex")
 
 
+def test_build_exports_yaml_vtt_html_split_page():
+    from types import SimpleNamespace
+
+    from docling_core.types.doc.document import DoclingDocument
+
+    doc = DoclingDocument(name="n")
+    exports = _build_exports(
+        SimpleNamespace(
+            json_content=doc,
+            md_content=None,
+            html_content=None,
+            text_content=None,
+            doctags_content=None,
+            doclang_content=None,
+        ),
+        {
+            OutputFormat.YAML,
+            OutputFormat.VTT,
+            OutputFormat.HTML_SPLIT_PAGE,
+        },
+    )
+    assert exports is not None
+    assert exports.HasField("yaml")
+    assert "name: n" in exports.yaml or "n" in exports.yaml
+    assert exports.HasField("vtt")
+    assert exports.vtt.startswith("WEBVTT")
+    assert exports.HasField("html_split_page")
+    assert "<html" in exports.html_split_page.lower()
+
+
+def test_build_exports_dclx():
+    from types import SimpleNamespace
+
+    from docling_core.types.doc.document import DoclingDocument
+
+    exports = _build_exports(
+        SimpleNamespace(
+            json_content=DoclingDocument(name="n"),
+            md_content=None,
+            html_content=None,
+            text_content=None,
+            doctags_content=None,
+            doclang_content=None,
+        ),
+        {OutputFormat.DCLX},
+    )
+    assert exports is not None
+    assert exports.HasField("dclx")
+    assert exports.dclx[:4] == b"PK\x03\x04"
+
+
 def test_to_task_sources_and_target():
     sources = to_task_sources(
         [
@@ -414,6 +504,7 @@ def test_to_task_sources_and_target():
                     bucket="bucket",
                     key_prefix="prefix",
                     verify_ssl=True,
+                    region="us-east-2",
                 )
             ),
         ]
@@ -422,6 +513,7 @@ def test_to_task_sources_and_target():
     assert isinstance(sources[0], FileSourceRequest)
     assert isinstance(sources[1], HttpSourceRequest)
     assert isinstance(sources[2], S3SourceRequest)
+    assert sources[2].region == "us-east-2"
 
     assert isinstance(to_task_target(None), InBodyTarget)
     assert isinstance(
@@ -438,20 +530,20 @@ def test_to_task_sources_and_target():
         ),
         PutTarget,
     )
-    assert isinstance(
-        to_task_target(
-            docling_serve_types_pb2.Target(
-                s3=docling_serve_types_pb2.S3Target(
-                    endpoint="s3.example.com",
-                    access_key="a",
-                    secret_key="b",
-                    bucket="bucket",
-                    verify_ssl=True,
-                )
+    s3_tgt = to_task_target(
+        docling_serve_types_pb2.Target(
+            s3=docling_serve_types_pb2.S3Target(
+                endpoint="s3.example.com",
+                access_key="a",
+                secret_key="b",
+                bucket="bucket",
+                verify_ssl=True,
+                region="eu-west-1",
             )
-        ),
-        S3Target,
+        )
     )
+    assert isinstance(s3_tgt, S3Target)
+    assert s3_tgt.region == "eu-west-1"
     presigned = to_task_target(
         docling_serve_types_pb2.Target(
             presigned_url=docling_serve_types_pb2.PreSignedUrlTarget()
@@ -723,6 +815,7 @@ def test_to_convert_options_new_enum_values():
             docling_serve_types_pb2.INPUT_FORMAT_VTT,
             docling_serve_types_pb2.INPUT_FORMAT_XML_XBRL,
             docling_serve_types_pb2.INPUT_FORMAT_IWORK_PAGES,
+            docling_serve_types_pb2.INPUT_FORMAT_IWORK_KEYNOTE,
             docling_serve_types_pb2.INPUT_FORMAT_EBCDIC,
         ],
         to_formats=[
@@ -740,6 +833,7 @@ def test_to_convert_options_new_enum_values():
         InputFormat.VTT,
         InputFormat.XML_XBRL,
         InputFormat.IWORK_PAGES,
+        InputFormat.IWORK_KEYNOTE,
         InputFormat.EBCDIC,
     ]
     assert mapped.to_formats == [OutputFormat.YAML, OutputFormat.VTT]
@@ -963,6 +1057,7 @@ def test_ocr_engine_proto_enum_maps_to_upstream_string():
         (docling_serve_types_pb2.OCR_ENGINE_RAPIDOCR, "rapidocr"),
         (docling_serve_types_pb2.OCR_ENGINE_TESSEROCR, "tesserocr"),
         (docling_serve_types_pb2.OCR_ENGINE_TESSERACT, "tesseract"),
+        (docling_serve_types_pb2.OCR_ENGINE_TESSERACT_CLI, "tesseract_cli"),
     ]
     for proto_val, expected in cases:
         assert _map_ocr_engine(proto_val) == expected
@@ -976,6 +1071,24 @@ def test_ocr_engine_proto_enum_maps_to_upstream_string():
     assert mapped.ocr_engine != "unspecified"
     # Default pydantic value when unset / skipped
     assert isinstance(mapped.ocr_engine, str)
+
+
+def test_ocr_engine_proto_covers_pydantic_enum_values():
+    """Every OcrEngine enum member must be reachable from a proto tag."""
+    from docling.datamodel.pipeline_options import OcrEngine as DoclingOcrEngine
+
+    reachable: set[str] = set()
+    for value in docling_serve_types_pb2.OcrEngine.DESCRIPTOR.values:
+        if value.number == 0:
+            continue
+        mapped = _map_ocr_engine(value.number)
+        if mapped is not None:
+            reachable.add(mapped)
+    missing = {member.value for member in DoclingOcrEngine} - reachable
+    assert not missing, (
+        f"OcrEngine values not reachable from any proto tag: {sorted(missing)}. "
+        f"Add a proto tag in docling_serve_types.proto and a mapping entry."
+    )
 
 
 def test_picture_classification_labels_are_enums_not_strings():
@@ -1374,6 +1487,48 @@ def test_confidence_scores_optional_fields_and_grades():
     assert not proto.HasField("low_grade_raw")
 
 
+def test_profiling_item_maps_full_samples_alongside_totals():
+    from datetime import datetime, timezone
+
+    from docling.datamodel.base_models import ConversionStatus
+    from docling.datamodel.service.responses import DocumentResultItem
+    from docling.utils.profiling import ProfilingItem, ProfilingScope
+    from types import SimpleNamespace
+
+    from docling_serve.grpc.mapping import convert_result_to_proto
+
+    timings = {
+        "pipeline_total": ProfilingItem(
+            scope=ProfilingScope.DOCUMENT,
+            count=2,
+            times=[0.1, 0.2],
+            start_timestamps=[datetime(2026, 1, 1, tzinfo=timezone.utc)],
+        )
+    }
+    result = DocumentResultItem.model_construct(
+        document=SimpleNamespace(
+            filename="f.pdf",
+            json_content=None,
+            md_content=None,
+            html_content=None,
+            text_content=None,
+            doctags_content=None,
+            doclang_content=None,
+        ),
+        status=ConversionStatus.SUCCESS,
+        errors=[],
+        timings=timings,
+        confidence=None,
+    )
+    proto = convert_result_to_proto(result, processing_time=0.3)
+    assert proto.timings["pipeline_total"] == pytest.approx(0.3)
+    item = proto.profiling["pipeline_total"]
+    assert item.scope == docling_serve_types_pb2.PROFILING_SCOPE_DOCUMENT
+    assert item.count == 2
+    assert list(item.times) == pytest.approx([0.1, 0.2])
+    assert item.start_timestamps == ["2026-01-01T00:00:00Z"]
+
+
 def test_public_failure_unknown_vocab_falls_back_to_raw():
     from docling.datamodel.service.responses import PublicFailureInfo
 
@@ -1602,3 +1757,223 @@ def test_progress_kinds_cover_callback_union():
     }
     assert kinds, "could not introspect ProgressCallbackRequest.progress"
     assert kinds == arms, kinds ^ arms
+
+
+def _chart_extraction_config(**overrides):
+    config = docling_serve_types_pb2.ChartExtractionVlmEngineOptions(
+        engine_options=docling_serve_types_pb2.BaseVlmEngineOptions(
+            engine_type=docling_serve_types_pb2.VLM_ENGINE_TYPE_TRANSFORMERS
+        ),
+        model_spec=_minimal_vlm_model_spec(
+            name="granite-vision-v4", repo_id="ibm-granite/granite-vision-4.1-4b"
+        ),
+    )
+    for name, value in overrides.items():
+        setattr(config, name, value)
+    return config
+
+
+def test_chart_extraction_preset_and_custom_config_are_exclusive():
+    preset = docling_serve_types_pb2.ConvertDocumentOptions(
+        chart_extraction_preset="granite_vision_v4"
+    )
+    mapped = to_convert_options(preset)
+    assert mapped.chart_extraction_preset == "granite_vision_v4"
+
+    with pytest.raises(ValueError, match="empty"):
+        to_convert_options(
+            docling_serve_types_pb2.ConvertDocumentOptions(chart_extraction_preset="")
+        )
+
+    with pytest.raises(ValueError, match="both chart_extraction_preset"):
+        to_convert_options(
+            docling_serve_types_pb2.ConvertDocumentOptions(
+                chart_extraction_preset="granite_vision_v4",
+                chart_extraction_custom_config=_chart_extraction_config(),
+            )
+        )
+
+
+def test_chart_extraction_custom_config_round_trips_and_rejects_gaps():
+    from docling.datamodel.chart_extraction_options import ChartExtractionOutputFormat
+    from docling.models.inference_engines.vlm.base import VlmEngineType
+
+    mapped = to_convert_options(
+        docling_serve_types_pb2.ConvertDocumentOptions(
+            chart_extraction_custom_config=_chart_extraction_config(
+                chart2csv=True,
+                output_format=docling_serve_types_pb2.CHART_EXTRACTION_OUTPUT_FORMAT_GRANITE_VISION_CHARTS,
+            )
+        )
+    )
+    config = mapped.chart_extraction_custom_config
+    assert config.model_spec.name == "granite-vision-v4"
+    assert config.model_spec.default_repo_id == "ibm-granite/granite-vision-4.1-4b"
+    assert config.engine_options.engine_type == VlmEngineType.TRANSFORMERS
+    assert config.chart2csv is True
+    assert config.output_format == ChartExtractionOutputFormat.GRANITE_VISION_CHARTS
+
+    with pytest.raises(ValueError, match="engine_type is required"):
+        to_convert_options(
+            docling_serve_types_pb2.ConvertDocumentOptions(
+                chart_extraction_custom_config=docling_serve_types_pb2.ChartExtractionVlmEngineOptions(
+                    model_spec=_minimal_vlm_model_spec()
+                )
+            )
+        )
+
+    bare = _chart_extraction_config()
+    bare.model_spec.name = ""
+    with pytest.raises(ValueError, match="model_spec"):
+        to_convert_options(
+            docling_serve_types_pb2.ConvertDocumentOptions(
+                chart_extraction_custom_config=bare
+            )
+        )
+
+    with pytest.raises(ValueError, match="At least one of chart2csv"):
+        to_convert_options(
+            docling_serve_types_pb2.ConvertDocumentOptions(
+                chart_extraction_custom_config=_chart_extraction_config(
+                    chart2csv=False, chart2summary=False, chart2code=False
+                )
+            )
+        )
+
+
+def test_chart_extraction_output_format_covers_pydantic():
+    from docling.datamodel.chart_extraction_options import ChartExtractionOutputFormat
+
+    pydantic_names = {member.name for member in ChartExtractionOutputFormat}
+    proto_names = {
+        name.removeprefix("CHART_EXTRACTION_OUTPUT_FORMAT_")
+        for name, number in docling_serve_types_pb2.ChartExtractionOutputFormat.items()
+        if number != 0
+    }
+    assert pydantic_names == proto_names
+
+
+def test_s3_credentials_are_paired():
+    paired = to_task_sources(
+        [
+            docling_serve_types_pb2.Source(
+                s3=docling_serve_types_pb2.S3Source(
+                    endpoint="s3.example.com",
+                    bucket="bucket",
+                    verify_ssl=True,
+                )
+            )
+        ]
+    )
+    assert paired[0].access_key is None
+    assert paired[0].secret_key is None
+
+    with pytest.raises(ValueError, match="provided together"):
+        to_task_sources(
+            [
+                docling_serve_types_pb2.Source(
+                    s3=docling_serve_types_pb2.S3Source(
+                        endpoint="s3.example.com",
+                        access_key="only-one",
+                        bucket="bucket",
+                    )
+                )
+            ]
+        )
+
+    with pytest.raises(ValueError, match="non-empty"):
+        to_task_target(
+            docling_serve_types_pb2.Target(
+                s3=docling_serve_types_pb2.S3Target(
+                    endpoint="s3.example.com",
+                    access_key="",
+                    secret_key="",
+                    bucket="bucket",
+                )
+            )
+        )
+
+
+def test_caption_placement_reexports_markdown_and_rejects_unspecified():
+    from types import SimpleNamespace
+
+    from docling_core.types.doc.base import BoundingBox, CoordOrigin, Size
+    from docling_core.types.doc.document import (
+        DocItemLabel,
+        DoclingDocument,
+        ProvenanceItem,
+    )
+    from docling_core.types.doc.base import CaptionPlacement
+
+    from docling_serve.grpc.mapping import caption_placement_from_options
+
+    doc = DoclingDocument(name="cap")
+    doc.add_page(page_no=1, size=Size(width=100, height=200))
+    caption = doc.add_text(
+        label=DocItemLabel.CAPTION,
+        text="THE CAPTION",
+        prov=ProvenanceItem(
+            page_no=1,
+            bbox=BoundingBox(l=0, r=10, t=150, b=170, coord_origin=CoordOrigin.TOPLEFT),
+            charspan=(0, 0),
+        ),
+    )
+    doc.add_picture(
+        caption=caption,
+        prov=ProvenanceItem(
+            page_no=1,
+            bbox=BoundingBox(l=0, r=10, t=50, b=100, coord_origin=CoordOrigin.TOPLEFT),
+            charspan=(0, 0),
+        ),
+    )
+    payload = SimpleNamespace(
+        json_content=doc,
+        md_content="ENGINE MARKDOWN",
+        html_content=None,
+        text_content=None,
+        doctags_content=None,
+        doclang_content=None,
+    )
+
+    untouched = _build_exports(payload, {OutputFormat.MARKDOWN})
+    assert untouched.md == "ENGINE MARKDOWN"
+
+    laid_out = _build_exports(
+        payload, {OutputFormat.MARKDOWN}, caption_placement=CaptionPlacement.LAYOUT
+    )
+    assert "<!-- image -->" in laid_out.md
+    assert laid_out.md.index("<!-- image -->") < laid_out.md.index("THE CAPTION")
+
+    standard = _build_exports(
+        payload, {OutputFormat.MARKDOWN}, caption_placement=CaptionPlacement.STANDARD
+    )
+    assert standard.md.index("THE CAPTION") < standard.md.index("<!-- image -->")
+
+    missing = SimpleNamespace(
+        json_content=None,
+        md_content="ENGINE MARKDOWN",
+        html_content=None,
+        text_content=None,
+        doctags_content=None,
+        doclang_content=None,
+    )
+    with pytest.raises(ValueError, match="json_content is missing"):
+        _build_exports(
+            missing, {OutputFormat.MARKDOWN}, caption_placement=CaptionPlacement.LAYOUT
+        )
+
+    with pytest.raises(ValueError, match="unspecified or unknown"):
+        caption_placement_from_options(
+            docling_serve_types_pb2.ConvertDocumentOptions(
+                caption_placement=docling_serve_types_pb2.CAPTION_PLACEMENT_UNSPECIFIED
+            )
+        )
+    assert (
+        caption_placement_from_options(
+            docling_serve_types_pb2.ConvertDocumentOptions(
+                caption_placement=docling_serve_types_pb2.CAPTION_PLACEMENT_LAYOUT
+            )
+        )
+        == CaptionPlacement.LAYOUT
+    )
+

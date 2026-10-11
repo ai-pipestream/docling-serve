@@ -129,23 +129,131 @@ are marked; the previous tags are `reserved` in the IDL.
 | `ProgressCallbackRequest.progress` union (`set_num_docs`, `update_processed`, `document_completed`, `task_completed`) | additive | serve | `TaskProgress` oneof with the same arm names; `ProcessedDocsItem`, `DocumentCompletedItem` typed. Emitted on `StreamDocumentResponse.progress = 15`. `document_completed` is declared but not yet emitted (needs per-source hooks). |
 | — | fork cleanup | — | `StreamError.code` free string (tag 1) → `reserved 1`; `StreamErrorCode code = 4` closed enum. `RedisBackpressureError` → `RESOURCE_EXHAUSTED` (REST 503). Dead `OutputFormat.LATEX` guard removed. Orchestrators that only record failure on the task (local) now yield the `failure` arm instead of `NOT_FOUND`. |
 
+## 2026-09-13 — docling-core 2.96 (docling-serve upstream unchanged since 1.32)
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| `DocumentOrigin.mimetype` allowlist gained `application/vnd.apple.pages`, `.numbers`, `.keynote`, `application/x-iwork-*-sff*`, `application/x-afp`, `application/vnd.ibm.modcap`, `application/x-mimearchive`, `multipart/related` | additive (validation) | core | No proto change; `mimetype` is a free string on the wire. Producers (gRParse) may now emit these without the Pydantic side rejecting the document. |
+| Markdown table header rows derived from `column_header` on cells whose `start_row_offset_idx == row_idx`, so rows under spanning column headers are kept as body rows | behavioural (serializer) | core | No wire change; affects `DocumentExports.markdown` and any independent Markdown renderer that wants byte parity. |
+| PNG page/picture images encoded at OpenCV compression level 6 (matches PIL) | behavioural | core | No wire change; `ImageRef.uri` payloads shrink. |
+| `DOCLINGCORE_ALLOWED_PRIVATE_IPS` allowlist for URL fetches | additive (settings) | core | None; server configuration. |
+| WebVTT signature accepts a CR terminator | behavioural | core | None. |
+
 Schema version has stayed at **1.10.0** for the whole window; no
 `DoclingDocument` structural change has required a proto field since the
 baseline.
 
+
+## 2026-09-17 — docling-core 2.97
+
+Synced `feat/add-protobuf` with `docling-project/main` (clean merge; 199
+serialization tests green).
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| `export_to_markdown` / `export_to_html` gain `image_dir` + `image_uri_prefix`; `image_dir` without `ImageRefMode.REFERENCED` raises | additive (serializer API) | core | No wire change on Convert options; local/export helpers. gRParse Markdown export may later grow matching `image_dir` / URI prefix knobs if clients need file-referenced images. |
+| Markdown serializer: keep row-header-only rows out of the MD table header block | behavioural (serializer) | core | No wire change; affects `DocumentExports.markdown` / gRParse `table_markdown` parity — verify header-row rule still matches after core bump. |
+| DocLang (DCLX) serialization fixes for text split across pages | behavioural | core | No wire change unless DocLang export is exposed on gRPC. |
+
+
+## 2026-09-17 — docling-serve 1.33 (upstream sync into grpc-native-converter)
+
+Merged `upstream/main` through v1.33.0. Lock follows upstream (docling-slim
+≥2.127, jobkit ≥3.6); Darwin transformers pins remain commented as on
+upstream so the VLM extras resolve.
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| Managed artifact S3 gains `DOCLING_SERVE_ARTIFACT_STORAGE_REGION` (`artifact_storage_region`) | additive (settings) | serve | Server env only — not a Convert request field. No proto change; gRPC managed-artifact path should pass the setting through the same orchestrator factory hook REST uses. |
+| Azure Blob managed artifact storage + env knobs | additive (settings) | serve | Server config only for managed artifacts; request-side Azure source/target already partially present via jobkit — verify gRPC GenericSource/Target attrs cover Azure/GCS/GDrive plugins. |
+| `DOCLING_SERVE_ENG_RQ_JOB_TIMEOUT` | additive (settings) | serve | None on Convert RPCs; document as server env. |
+| Multipart form: omit defaulted fields so `model_fields_set` stays truthful; 422 on invalid options | behavioural | serve REST | gRPC already uses typed options; no change. |
+| Chunking presets / multi-target / plugin connector sources | additive | serve | Audit `ConvertDocumentsRequest` / chunk options vs new REST; extend protos if new public fields. |
+| `allowed_source_types` policy | additive (policy) | serve | Policy interceptor / settings — not a client Convert field. |
+| New input formats in docs (`rtf`, `mhtml`) | additive (docs/enum) | serve | `INPUT_FORMAT_RTF = 32`, `INPUT_FORMAT_MHTML = 33` + mapping entries; covered by `test_input_format_proto_covers_pydantic`. |
+
+## 2026-09-17 — InputFormat.AFP on the Convert wire
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| `InputFormat.AFP` (IBM AFP / MO:DCA; already on Pydantic / REST docs) | additive | engine | `INPUT_FORMAT_AFP = 34` + `_map_input_format` entry; drift guard `test_input_format_proto_covers_pydantic`. gRParse maps `application/x-afp` / `application/vnd.ibm.modcap` / `.afp` to the same tag (previously mis-tagged as EBCDIC). |
+
+## 2026-09-17 — OcrEngine.TESSERACT_CLI on the Convert wire
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| `OcrEngine.TESSERACT_CLI` (`tesseract_cli`) | additive | engine | `OCR_ENGINE_TESSERACT_CLI = 7` + `_map_ocr_engine` → `"tesseract_cli"`; drift guard `test_ocr_engine_proto_covers_pydantic_enum_values`. Legacy `OCR_ENGINE_TESSEROCR = 5` kept for the `"tesserocr"` kind string. |
+
+## 2026-09-17 — DocumentExports YAML / VTT / HTML_SPLIT_PAGE
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| In-body YAML / VTT / HTML split-page exports (OutputFormat already on the request wire; jobkit in-body model has no slots) | additive | serve | `DocumentExports.yaml = 8`, `vtt = 9`, `html_split_page = 10`; `_build_exports` serializes on demand from `DoclingDocument` (`yaml.dump(export_to_dict())`, `export_to_vtt()`, `export_to_html(split_page_view=True)`), same pattern as LaTeX. |
+
+## 2026-09-17 — DocumentExports.DCLX
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| In-body DocLang OPC archive (`OutputFormat.DCLX`) | additive | serve | `DocumentExports.dclx = 11` (`bytes`); `_build_exports` uses `save_as_doclang_archive` into a temp file and returns the ZIP bytes. |
+
+## 2026-09-17 — S3Coordinates.region (#694)
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| `S3Coordinates.region` on request sources/targets (jobkit / slim; also server `artifact_storage_region`) | additive | serve | `S3Source.region = 8`, `S3Target.region = 8`; mapping passes through when set. Managed-artifact env was already wired in settings/orchestrator_factory. |
+
+## 2026-10-11 — serve 1.36.0 / slim 2.132 / core 2.101.1
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| `InputFormat.IWORK_KEYNOTE` (`iwork_keynote`) | additive | engine | `INPUT_FORMAT_IWORK_KEYNOTE = 35` + `_map_input_format` entry; drift guard `test_input_format_proto_covers_pydantic`. |
+| DoclingDocument origin allowlist `application/rtf`; DocLang xsize/ysize export params; field-item key cardinality validator | additive / behavioural | core | No document-wire change (`origin.mimetype` remains string; export params are method args). Schema walker: 541 Pydantic fields covered. |
+
 ## Not yet accommodated
 
-- `timings` values are `ProfilingItem.total()` seconds (`map<string, double>`)
-  rather than the full `ProfilingItem` (`scope`, `count`, `times`,
-  `start_timestamps`) REST returns. Making it a typed message is a wire
-  change on `ConvertDocumentResponse.timings = 5`; deferred.
 - `TaskStatusResponse.task_status` is typed as `ConversionStatus` upstream
   while `Task.task_status` is `TaskStatus`; the proto keeps `TaskStatus`
   (identical string vocabulary for the four states used).
 
-- `docling-slim >= 2.125` cannot be locked in docling-serve: `docling-jobkit`
-  3.5's `models-vlm-inline` extra pulls `mlx-vlm >= 0.6.17`, which requires
-  `transformers >= 5.14` on Darwin while serve's constraints cap it at
-  `< 5.9`. The pin stays at `>= 2.124` until jobkit or upstream serve resolves
-  it. `PROCESSING_PIPELINE_NATIVE` is therefore reserved but unreachable on
-  the current lock.
+## 2026-09-17 — PROCESSING_PIPELINE_NATIVE live
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| `ProcessingPipeline.NATIVE` reachable on current lock (`docling-slim>=2.127` / engine 2.128) | additive (now live) | engine | Tag `PROCESSING_PIPELINE_NATIVE = 5` was reserved earlier; `_map_pipeline` resolves it via `getattr` and `to_convert_options` accepts it. Drift + positive mapping tests. |
+
+## 2026-09-17 — ProfilingItem on convert responses
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| REST `timings` values are full `ProfilingItem` (`scope`, `count`, `times`, `start_timestamps`) | additive | serve | New `ProfilingScope` + `ProfilingItem`; `ConvertDocumentResponse.profiling = 8`, `Document.profiling = 8`, `DocumentArtifactItem.profiling = 10`. Existing `map<string, double> timings` keeps totals for older clients. |
+
+## 2026-09-17 — ChunkDocumentResponse.chunking_info
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| `ChunkedDocumentResult.chunking_info: Optional[dict]` (jobkit dump of active chunker options; REST `ChunkDocumentResponse` omits it) | additive | jobkit | `ChunkDocumentResponse.chunking_info = 4` as `map<string, ScalarValue>` via `_dict_to_scalar_map` (same pattern as `Chunk.metadata`). |
+
+## 2026-09-18 — PdfBackend REST string rename (slim 2.128 / serve 1.34.0)
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| `PdfBackend.THREADED_DOCLING_PARSE` value is now `"docling_parse"`; deprecated `DOCLING_PARSE` is `"_docling_parse"` | behavioural (REST strings) | engine | No new proto tag. Existing `PDF_BACKEND_DOCLING_PARSE` / `PDF_BACKEND_THREADED_DOCLING_PARSE` still map to the same enum members; engine `normalize_pdf_backend` folds the deprecated ones onto threaded. Drift guard `test_pdf_backend_proto_covers_pydantic` still holds. |
+
+## 2026-09-22 — core 2.97.2 caption order, slim 2.129 chart extraction and S3 credentials
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| `CaptionPlacement` (`standard`, `layout`) on `MarkdownParams` (docling-core #786) | additive, proto-only vs `ConvertDocumentsOptions` | core | `CaptionPlacement` enum. `ConvertDocumentOptions.caption_placement = 51`. Unset keeps engine markdown; `standard` and `layout` re-export from the DoclingDocument. Allowlisted in the schema checker. |
+| `chart_extraction_preset` and `chart_extraction_custom_config: ChartExtractionVlmEngineOptions` (slim 2.129) | additive | engine | `ChartExtractionOutputFormat`, `ChartExtractionVlmEngineOptions`. Fields 52 and 53, mutually exclusive. Engine type and model spec are required on the custom config. |
+| `S3Coordinates.access_key` / `secret_key` optional; both omitted means ambient credentials | additive, wire-compatible | engine | `S3Source` and `S3Target` fields 2 and 3 are `optional string`. Exactly one key, or an empty key, is rejected. |
+
+## 2026-10-01 — core 2.99.0, serve 1.35.0, slim 2.130.0
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| `DocumentOrigin` accepts `audio/m4a` and `audio/mp4` (#789) | validator-only | core | `mimetype` is already `string`; no new tag. Round-trip test added. |
+| `PdfWidget.widget_field_flags` / `widget_appearance_state` (#733) | additive on `SegmentedPage`, not `DoclingDocument.PageItem` | core | Out of `docling_document.proto` until widgets hang off `PageItem`. |
+| Doclang `include_namespace` / `image_mode` export knobs (#809); furniture/orphan repairs (#810) | serializer / method | core | No document or convert-option field. |
+| `allow_custom_chart_extraction_config` and chart-extraction preset/engine allowlists (#706) | additive (settings/policy) | serve | No new convert-option tag; gRPC already reuses `validate_convert_options`. Custom chart config stays fields 52/53. |
+| `enable_api_docs`, Prometheus-gated `/metrics`, RQ multi-queue drain, RQ wait metrics, Gradio→Vite UI (#707/#710/#711/#714) | serve process / UI | serve | Not convert-request proto. |
+

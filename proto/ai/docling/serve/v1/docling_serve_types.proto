@@ -46,6 +46,12 @@ enum InputFormat {
   INPUT_FORMAT_BOXNOTE = 29;
   INPUT_FORMAT_IWORK_PAGES = 30;
   INPUT_FORMAT_EBCDIC = 31;
+  INPUT_FORMAT_RTF = 32;
+  INPUT_FORMAT_MHTML = 33;
+  // IBM AFP / MO:DCA print streams (Pydantic InputFormat.AFP).
+  INPUT_FORMAT_AFP = 34;
+  // Apple Keynote (Pydantic InputFormat.IWORK_KEYNOTE; slim >= 2.132).
+  INPUT_FORMAT_IWORK_KEYNOTE = 35;
 }
 
 // Output format types for converted documents.
@@ -73,8 +79,12 @@ enum OcrEngine {
   OCR_ENGINE_EASYOCR = 2;
   OCR_ENGINE_OCRMAC = 3;
   OCR_ENGINE_RAPIDOCR = 4;
+  // Legacy kind string "tesserocr" (Python bindings). Prefer OCR_ENGINE_TESSERACT
+  // for the Pydantic OcrEngine.TESSERACT value ("tesseract").
   OCR_ENGINE_TESSEROCR = 5;
   OCR_ENGINE_TESSERACT = 6;
+  // Pydantic OcrEngine.TESSERACT_CLI — Tesseract via the CLI binary.
+  OCR_ENGINE_TESSERACT_CLI = 7;
 }
 
 // PDF processing backend.
@@ -112,6 +122,21 @@ enum ImageRefMode {
   IMAGE_REF_MODE_EMBEDDED = 1;
   IMAGE_REF_MODE_PLACEHOLDER = 2;
   IMAGE_REF_MODE_REFERENCED = 3;
+}
+
+// Where captions sit relative to the item they caption (docling-core
+// CaptionPlacement). STANDARD is the per-type order; LAYOUT uses bbox centers.
+enum CaptionPlacement {
+  CAPTION_PLACEMENT_UNSPECIFIED = 0;
+  CAPTION_PLACEMENT_STANDARD = 1;
+  CAPTION_PLACEMENT_LAYOUT = 2;
+}
+
+// Parsing contract for chart-extraction model output
+// (ChartExtractionOutputFormat).
+enum ChartExtractionOutputFormat {
+  CHART_EXTRACTION_OUTPUT_FORMAT_UNSPECIFIED = 0;
+  CHART_EXTRACTION_OUTPUT_FORMAT_GRANITE_VISION_CHARTS = 1;
 }
 
 // Preset VLM model types. Names mirror the upstream
@@ -325,12 +350,17 @@ message HttpSource {
 
 message S3Source {
   string endpoint = 1;
-  string access_key = 2;
-  string secret_key = 3;
+  // Both set, or both omitted (ambient credentials). One without the other
+  // is rejected.
+  optional string access_key = 2;
+  optional string secret_key = 3;
   string bucket = 4;
   optional string key_prefix = 5;
   bool verify_ssl = 6;
   optional int32 max_num_elements = 7;
+  // AWS region for signing (e.g. us-east-2). Optional for S3-compatible
+  // services that ignore region; required for real AWS outside us-east-1.
+  optional string region = 8;
 }
 
 message AzureBlobSource {
@@ -420,12 +450,17 @@ message PutTarget {
 
 message S3Target {
   string endpoint = 1;
-  string access_key = 2;
-  string secret_key = 3;
+  // Both set, or both omitted (ambient credentials). One without the other
+  // is rejected.
+  optional string access_key = 2;
+  optional string secret_key = 3;
   string bucket = 4;
   optional string key_prefix = 5;
   bool verify_ssl = 6;
   optional int32 max_num_elements = 7;
+  // AWS region for signing (e.g. us-east-2). Optional for S3-compatible
+  // services that ignore region; required for real AWS outside us-east-1.
+  optional string region = 8;
 }
 
 message ZipTarget {}
@@ -576,6 +611,20 @@ message CodeFormulaVlmOptions {
   optional bool extract_formulas = 6;
 }
 
+// ChartExtractionVlmEngineOptions mirrors docling's chart extraction stage
+// (docling >= 2.129). At least one of chart2csv, chart2summary, chart2code
+// must be true; omitted flags keep the model defaults.
+message ChartExtractionVlmEngineOptions {
+  BaseVlmEngineOptions engine_options = 1;
+  VlmModelSpec model_spec = 2;
+  optional bool chart2csv = 3;
+  optional bool chart2summary = 4;
+  optional bool chart2code = 5;
+  optional ChartExtractionOutputFormat output_format = 6;
+  optional string output_format_raw = 7;
+  optional bool use_natural_language_prompts = 8;
+}
+
 // HeadingHierarchyOptions configures PDF/image section-header level inference.
 message HeadingHierarchyOptions {
   optional bool enabled = 1;
@@ -649,6 +698,13 @@ message ConvertDocumentOptions {
     HierarchicalChunkerOptions hierarchical_chunking = 49;
     HybridChunkerOptions hybrid_chunking = 50;
   }
+  // Markdown caption order (docling-core CaptionPlacement). Unset keeps the
+  // engine's standard order. Mutually exclusive values are the enum itself.
+  optional CaptionPlacement caption_placement = 51;
+  // Preset id for chart extraction. Mutually exclusive with
+  // chart_extraction_custom_config.
+  optional string chart_extraction_preset = 52;
+  optional ChartExtractionVlmEngineOptions chart_extraction_custom_config = 53;
 }
 
 // ============================================================================
@@ -727,6 +783,26 @@ message ConfidenceScores {
   optional string low_grade_raw = 10;
 }
 
+// ProfilingScope mirrors docling.utils.profiling.ProfilingScope.
+enum ProfilingScope {
+  PROFILING_SCOPE_UNSPECIFIED = 0;
+  PROFILING_SCOPE_PAGE = 1;
+  PROFILING_SCOPE_DOCUMENT = 2;
+}
+
+// ProfilingItem mirrors docling.utils.profiling.ProfilingItem — the full
+// timing sample REST returns under ConvertDocumentResponse.timings values.
+// The parallel map<string, double> timings fields keep totals for older
+// clients; this map carries scope/count/samples when present.
+message ProfilingItem {
+  ProfilingScope scope = 1;
+  optional string scope_raw = 2;
+  int32 count = 3;
+  repeated double times = 4;
+  // ISO-8601 timestamps matching Pydantic's JSON mode for datetime.
+  repeated string start_timestamps = 5;
+}
+
 // ArtifactRef mirrors docling's ArtifactRef: one exported artifact reachable
 // through a (usually presigned) URI.
 message ArtifactRef {
@@ -751,6 +827,8 @@ message DocumentArtifactItem {
   repeated ArtifactRef artifacts = 7;
   optional ConfidenceScores confidence = 8;
   optional string status_raw = 9;
+  // Full ProfilingItem samples (additive; timings keeps totals).
+  map<string, ProfilingItem> profiling = 10;
 }
 
 // ============================================================================
@@ -769,6 +847,14 @@ message DocumentExports {
   optional string doclang = 6;
   // Docling >=2.124: LaTeX serialization of the converted document.
   optional string latex = 7;
+  // OutputFormat.YAML — DoclingDocument as YAML (same shape as save_as_yaml).
+  optional string yaml = 8;
+  // OutputFormat.VTT — WebVTT cues from track-timed text.
+  optional string vtt = 9;
+  // OutputFormat.HTML_SPLIT_PAGE — HTML with split_page_view=True.
+  optional string html_split_page = 10;
+  // OutputFormat.DCLX — DocLang OPC archive bytes (ZIP with document.xml).
+  optional bytes dclx = 11;
 }
 
 // DocumentResponse contains the converted document and optional exports.
@@ -800,6 +886,8 @@ message Document {
   // Per-document profiling totals (seconds), keyed by stage.
   map<string, double> timings = 6;
   optional ConfidenceScores confidence = 7;
+  // Full ProfilingItem samples (additive; timings keeps totals).
+  map<string, ProfilingItem> profiling = 8;
 }
 
 // ============================================================================
@@ -965,6 +1053,8 @@ message ConvertDocumentResponse {
   // conversion status vocabularies.
   optional string status_raw = 6;
   optional ConfidenceScores confidence = 7;
+  // Full ProfilingItem samples (additive; timings keeps totals).
+  map<string, ProfilingItem> profiling = 8;
 }
 
 // HierarchicalChunkerOptions configures the hierarchical chunker.
@@ -1025,10 +1115,14 @@ message Chunk {
 }
 
 // ChunkDocumentResponse mirrors the REST chunk response body.
+// chunking_info is the jobkit ChunkedDocumentResult dump of the active
+// chunker options (Optional[dict]); REST ChunkDocumentResponse currently
+// omits it. Scalar leaves only — nested values are flattened like Chunk.metadata.
 message ChunkDocumentResponse {
   repeated Chunk chunks = 1;
   repeated Document documents = 2;
   double processing_time = 3;
+  map<string, ScalarValue> chunking_info = 4;
 }
 
 // TaskStatusPollRequest mirrors GET /v1/status/poll/{taskId}
