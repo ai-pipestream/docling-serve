@@ -15,7 +15,7 @@ Living checklist for the scheduled parity duty. Update when a sync arrives.
 | --- | --- |
 | docling-core `feat/add-protobuf` | Merged `upstream/main` through **2.101.1**. Document proto unchanged (MIME allowlist / DocLang export params / field-item validator only). Schema walker green: 541 Pydantic fields. |
 | docling-serve `grpc-native-converter` | Cherry-picked 1.36.0 (viz UI, lock). Wire: `INPUT_FORMAT_IWORK_KEYNOTE = 35`. Lock: jobkit **3.8.1**, slim **2.132.0**, editable core **2.101.1**. |
-| gRParse | Port `INPUT_FORMAT_IWORK_KEYNOTE` if MIME/ext mapping not already present. |
+| gRParse | Added `INPUT_FORMAT_IWORK_KEYNOTE = 35` + MIME/`.key` mapping (`dc700de`). Local ctest blocked (OpenCV 5 missing); CI must confirm. |
 | Forgejo parser-family dep PRs | **0 merged**. Open and deferred: gRParse#16 numpy→2.5.4 (core requires `<2.5`); vlm-convert#7 fastapi 0.143, #6 accelerate 1.15; module-parser#71 docling-testcontainers 0.7.0. |
 
 ## Status 2026-10-01 (core 2.99.0 + serve 1.35.0, slim 2.130.0)
