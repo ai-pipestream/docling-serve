@@ -2037,3 +2037,50 @@ def test_chart_extraction_chart2csv_output_format_maps():
         mapped.chart_extraction_custom_config.output_format
         == ChartExtractionOutputFormat.GRANITE_VISION_CHART2CSV
     )
+
+
+def test_s3_verify_ssl_unset_keeps_pydantic_default_true():
+    sources = to_task_sources(
+        [
+            docling_serve_types_pb2.Source(
+                s3=docling_serve_types_pb2.S3Source(
+                    endpoint="s3.example.com",
+                    access_key="ak",
+                    secret_key="sk",
+                    bucket="in",
+                )
+            )
+        ]
+    )
+    assert sources[0].verify_ssl is True
+    assert "verify_ssl" not in sources[0].model_fields_set
+    assert "key_prefix" not in sources[0].model_fields_set
+
+    target = to_task_target(
+        docling_serve_types_pb2.Target(
+            s3=docling_serve_types_pb2.S3Target(
+                endpoint="s3.example.com",
+                access_key="ak",
+                secret_key="sk",
+                bucket="out",
+            )
+        )
+    )
+    assert isinstance(target, S3Target)
+    assert target.verify_ssl is True
+
+
+def test_s3_verify_ssl_explicit_false_is_honoured():
+    target = to_task_target(
+        docling_serve_types_pb2.Target(
+            s3=docling_serve_types_pb2.S3Target(
+                endpoint="s3.example.com",
+                access_key="ak",
+                secret_key="sk",
+                bucket="out",
+                verify_ssl=False,
+            )
+        )
+    )
+    assert isinstance(target, S3Target)
+    assert target.verify_ssl is False

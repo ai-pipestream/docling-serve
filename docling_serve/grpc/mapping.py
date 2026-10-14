@@ -783,11 +783,11 @@ def to_task_sources(proto_sources: Iterable[docling_serve_types_pb2.Source]):
             data = {
                 "endpoint": s3_src.endpoint,
                 "bucket": s3_src.bucket,
-                "key_prefix": s3_src.key_prefix
-                if s3_src.HasField("key_prefix")
-                else "",
-                "verify_ssl": s3_src.verify_ssl,
             }
+            if s3_src.HasField("key_prefix"):
+                data["key_prefix"] = s3_src.key_prefix
+            if s3_src.HasField("verify_ssl"):
+                data["verify_ssl"] = s3_src.verify_ssl
             data.update(_s3_credential_fields(s3_src, "S3Source"))
             if s3_src.HasField("max_num_elements"):
                 data["max_num_elements"] = s3_src.max_num_elements
@@ -859,9 +859,11 @@ def to_task_target(proto_target: Optional[docling_serve_types_pb2.Target]):
         data = {
             "endpoint": s3_tgt.endpoint,
             "bucket": s3_tgt.bucket,
-            "key_prefix": s3_tgt.key_prefix if s3_tgt.HasField("key_prefix") else "",
-            "verify_ssl": s3_tgt.verify_ssl,
         }
+        if s3_tgt.HasField("key_prefix"):
+            data["key_prefix"] = s3_tgt.key_prefix
+        if s3_tgt.HasField("verify_ssl"):
+            data["verify_ssl"] = s3_tgt.verify_ssl
         data.update(_s3_credential_fields(s3_tgt, "S3Target"))
         if s3_tgt.HasField("max_num_elements"):
             data["max_num_elements"] = s3_tgt.max_num_elements

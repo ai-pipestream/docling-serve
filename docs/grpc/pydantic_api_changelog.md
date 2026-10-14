@@ -221,6 +221,7 @@ upstream so the VLM extras resolve.
 | #725 Ray settings `eng_ray_converter_request_timeout`, `eng_ray_recycle_converter_on_abandoned_conversion`, `eng_ray_abandoned_conversion_grace_s` | additive | server settings | No wire change: process settings read by `orchestrator_factory`, shared by REST and gRPC. |
 | #721 `default_code_formula_preset` default `default` to `granite_docling` | behavioural | server settings | No wire change: `code_formula_preset` is a string resolved by the shared converter manager. |
 | #723 custom OCR presets always allowed by policy | behavioural | server policy | No wire change: gRPC servicer builds the same `ServicePolicy` via `build_service_policy`. |
+| #694 audit: `S3Coordinates.verify_ssl` default `True` | fix | serve | `S3Source.verify_ssl` / `S3Target.verify_ssl` changed from implicit `bool` to `optional bool`; unset now keeps the Pydantic default (TLS verification on) instead of sending `false`. `key_prefix` is passed only when set. Wire and JSON compatible; buf FILE breaking flags the presence change for generated code. |
 
 ## Not yet accommodated
 
