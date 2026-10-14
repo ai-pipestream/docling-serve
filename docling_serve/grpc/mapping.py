@@ -150,6 +150,7 @@ def _map_input_format(value: int) -> Optional[InputFormat]:
         "INPUT_FORMAT_BOXNOTE": InputFormat.BOXNOTE,
         "INPUT_FORMAT_IWORK_PAGES": InputFormat.IWORK_PAGES,
         "INPUT_FORMAT_IWORK_KEYNOTE": InputFormat.IWORK_KEYNOTE,
+        "INPUT_FORMAT_IWORK_NUMBERS": InputFormat.IWORK_NUMBERS,
         "INPUT_FORMAT_EBCDIC": InputFormat.EBCDIC,
         "INPUT_FORMAT_RTF": InputFormat.RTF,
         "INPUT_FORMAT_MHTML": InputFormat.MHTML,
@@ -594,6 +595,10 @@ def _to_code_formula_vlm_options(proto) -> CodeFormulaVlmOptions:
         data["extract_code"] = proto.extract_code
     if proto.HasField("extract_formulas"):
         data["extract_formulas"] = proto.extract_formulas
+    if proto.HasField("expansion_factor"):
+        data["expansion_factor"] = proto.expansion_factor
+    if proto.HasField("stop_on_repetition"):
+        data["stop_on_repetition"] = proto.stop_on_repetition
     return CodeFormulaVlmOptions.model_validate(data)
 
 
@@ -655,6 +660,19 @@ def _to_chart_extraction_vlm_engine_options(proto):
                     "chart_extraction_custom_config.output_format and output_format_raw disagree"
                 )
             data["output_format"] = ChartExtractionOutputFormat.GRANITE_VISION_CHARTS
+        elif (
+            proto.output_format
+            == docling_serve_types_pb2.CHART_EXTRACTION_OUTPUT_FORMAT_GRANITE_VISION_CHART2CSV
+        ):
+            if proto.output_format_raw and proto.output_format_raw != (
+                ChartExtractionOutputFormat.GRANITE_VISION_CHART2CSV.value
+            ):
+                raise ValueError(
+                    "chart_extraction_custom_config.output_format and output_format_raw disagree"
+                )
+            data["output_format"] = (
+                ChartExtractionOutputFormat.GRANITE_VISION_CHART2CSV
+            )
         else:
             raise ValueError(
                 "chart_extraction_custom_config.output_format is not a known format"
