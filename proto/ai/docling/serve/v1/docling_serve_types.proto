@@ -52,6 +52,8 @@ enum InputFormat {
   INPUT_FORMAT_AFP = 34;
   // Apple Keynote (Pydantic InputFormat.IWORK_KEYNOTE; slim >= 2.132).
   INPUT_FORMAT_IWORK_KEYNOTE = 35;
+  // Apple Numbers (Pydantic InputFormat.IWORK_NUMBERS; slim >= 2.138).
+  INPUT_FORMAT_IWORK_NUMBERS = 36;
 }
 
 // Output format types for converted documents.
@@ -137,6 +139,9 @@ enum CaptionPlacement {
 enum ChartExtractionOutputFormat {
   CHART_EXTRACTION_OUTPUT_FORMAT_UNSPECIFIED = 0;
   CHART_EXTRACTION_OUTPUT_FORMAT_GRANITE_VISION_CHARTS = 1;
+  // CSV-only Granite Vision Chart2CSV contract (granite_vision_v3_3 preset;
+  // Pydantic value "granite_vision_chart2csv").
+  CHART_EXTRACTION_OUTPUT_FORMAT_GRANITE_VISION_CHART2CSV = 2;
 }
 
 // Preset VLM model types. Names mirror the upstream
@@ -356,7 +361,8 @@ message S3Source {
   optional string secret_key = 3;
   string bucket = 4;
   optional string key_prefix = 5;
-  bool verify_ssl = 6;
+  // Pydantic default is true; unset keeps that default (TLS verification on).
+  optional bool verify_ssl = 6;
   optional int32 max_num_elements = 7;
   // AWS region for signing (e.g. us-east-2). Optional for S3-compatible
   // services that ignore region; required for real AWS outside us-east-1.
@@ -456,7 +462,8 @@ message S3Target {
   optional string secret_key = 3;
   string bucket = 4;
   optional string key_prefix = 5;
-  bool verify_ssl = 6;
+  // Pydantic default is true; unset keeps that default (TLS verification on).
+  optional bool verify_ssl = 6;
   optional int32 max_num_elements = 7;
   // AWS region for signing (e.g. us-east-2). Optional for S3-compatible
   // services that ignore region; required for real AWS outside us-east-1.
@@ -609,6 +616,12 @@ message CodeFormulaVlmOptions {
   optional int32 max_size = 4;
   optional bool extract_code = 5;
   optional bool extract_formulas = 6;
+  // Docling >= 2.138: crop margin as a fraction of element width/height
+  // (Pydantic float, ge=0.0, default 0.18 when omitted).
+  optional double expansion_factor = 7;
+  // Docling >= 2.138: stop repeating generations and trim the repeated tail
+  // (Pydantic bool, default true when omitted).
+  optional bool stop_on_repetition = 8;
 }
 
 // ChartExtractionVlmEngineOptions mirrors docling's chart extraction stage
