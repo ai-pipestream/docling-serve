@@ -209,6 +209,20 @@ upstream so the VLM extras resolve.
 | `InputFormat.IWORK_KEYNOTE` (`iwork_keynote`) | additive | engine | `INPUT_FORMAT_IWORK_KEYNOTE = 35` + `_map_input_format` entry; drift guard `test_input_format_proto_covers_pydantic`. |
 | DoclingDocument origin allowlist `application/rtf`; DocLang xsize/ysize export params; field-item key cardinality validator | additive / behavioural | core | No document-wire change (`origin.mimetype` remains string; export params are method args). Schema walker: 541 Pydantic fields covered. |
 
+## 2026-10-14 - serve 1.37.0 / slim 2.138 / core 2.101.1 / jobkit 3.8.2
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| `InputFormat.IWORK_NUMBERS` (`iwork_numbers`) | additive | engine | `INPUT_FORMAT_IWORK_NUMBERS = 36` + `_map_input_format` entry; drift guard `test_input_format_proto_covers_pydantic`. |
+| `CodeFormulaVlmOptions.expansion_factor` (float, ge 0.0, default 0.18) | additive | engine | `CodeFormulaVlmOptions.expansion_factor = 7` (`optional double`); passed only when set so Pydantic keeps its default and `model_fields_set` stays truthful; negative values rejected by Pydantic validation. |
+| `CodeFormulaVlmOptions.stop_on_repetition` (bool, default true) | additive | engine | `CodeFormulaVlmOptions.stop_on_repetition = 8` (`optional bool`); passed only when set. |
+| `ChartExtractionOutputFormat.GRANITE_VISION_CHART2CSV` (`granite_vision_chart2csv`) | additive | engine | `CHART_EXTRACTION_OUTPUT_FORMAT_GRANITE_VISION_CHART2CSV = 2`; enum/raw disagreement rejected like the existing value. |
+| `HeadingHierarchyOptions.numbering_schemes` known values gain `division`, `subdivision` | documentation | engine | No wire change: field stays `repeated string` upstream (`list[str]`). |
+| #725 Ray settings `eng_ray_converter_request_timeout`, `eng_ray_recycle_converter_on_abandoned_conversion`, `eng_ray_abandoned_conversion_grace_s` | additive | server settings | No wire change: process settings read by `orchestrator_factory`, shared by REST and gRPC. |
+| #721 `default_code_formula_preset` default `default` to `granite_docling` | behavioural | server settings | No wire change: `code_formula_preset` is a string resolved by the shared converter manager. |
+| #723 custom OCR presets always allowed by policy | behavioural | server policy | No wire change: gRPC servicer builds the same `ServicePolicy` via `build_service_policy`. |
+| #694 audit: `S3Coordinates.verify_ssl` default `True` | fix | serve | `S3Source.verify_ssl` / `S3Target.verify_ssl` changed from implicit `bool` to `optional bool`; unset now keeps the Pydantic default (TLS verification on) instead of sending `false`. `key_prefix` is passed only when set. Wire and JSON compatible; buf FILE breaking flags the presence change for generated code. |
+
 ## Not yet accommodated
 
 - `TaskStatusResponse.task_status` is typed as `ConversionStatus` upstream
