@@ -9,6 +9,27 @@ Living checklist for the scheduled parity duty. Update when a sync arrives.
 - Always-on rule: `/work/.cursor/rules/docling-parity-duty.mdc`
 - gRParse note: `AGENTS.md` → Recurring parity duty
 
+## Status 2026-10-14 (core 2.101.1 + serve 1.37.0, slim 2.138.0)
+
+| Track | State |
+| --- | --- |
+| docling-serve history | One-time `-s ours` merge of upstream `v1.36.0` records ancestry with an identical tree. From here on, sync by merging upstream release tags (no more per-commit replay). |
+| docling-serve `parity/serve-1.37.0` | Merged `v1.37.0` (#721, #723, #724, #725). Wire: `INPUT_FORMAT_IWORK_NUMBERS = 36`, `CodeFormulaVlmOptions.expansion_factor = 7`, `.stop_on_repetition = 8`, `CHART_EXTRACTION_OUTPUT_FORMAT_GRANITE_VISION_CHART2CSV = 2`. Lock: jobkit **3.8.2**, slim **2.138.0**, core **2.101.1**. Upstream tests `test_config_file_loading.py::test_nonexistent_config_file_ignored` and `::test_invalid_yaml_ignored` fail on the pure upstream files (they contradict #598 fail-fast config loading); not a gRPC regression. |
+| Open gap | REST `GET /v1/capabilities` (from #714) has no gRPC RPC. Needs a typed `GetCapabilities` design (presets, defaults, allowed engines) before it can carry #721/#723 effects to gRPC clients. |
+| gRParse | See the 1.37.0 deviation entries below. |
+
+### gRParse decisions for 1.37.0
+
+| Feature | Decision | Notes |
+| --- | --- | --- |
+| `INPUT_FORMAT_IWORK_NUMBERS = 36` | Add | Mirror the serve tag in `parse_types.proto`, map MIME `application/vnd.apple.numbers` and `.numbers`. Route through the same iWork container reader used for Pages and Keynote, and emit sheets as typed tables (calamine-style cell types) rather than flattened text. |
+| `expansion_factor`, `stop_on_repetition` | Add, enhanced | Add the two typed fields to gRParse's code/formula options. Enhancement: also apply repetition detection to API/vLLM engines at stream time (cancel the request) instead of only trimming output afterwards, and report a typed `truncated_for_repetition` flag per element. |
+| `GRANITE_VISION_CHART2CSV` output format | Add | gRParse already has `CHART_PRESET_GRANITE_VISION_CHART2CSV` in `enrich_service.proto`; add the matching `ChartExtractionOutputFormat` value in `parse_types.proto` so the custom-config path can select it. |
+| `numbering_schemes` `division` / `subdivision` | Add, enhanced | Accept the new names. Enhancement candidate: a typed `NumberingScheme` enum in gRParse with a `_raw` companion, since gRParse may deviate from the upstream `list[str]`. |
+| #725 Ray timeouts | Skip (documented) | gRParse does not run a Ray coordinator/replica model; per-document deadlines are already enforced through gRPC deadlines and the worker watchdog. Nothing to mirror. |
+| #721 default code/formula preset | Check | Confirm gRParse's default code/formula preset resolves to a real preset (`granite_docling`); if gRParse ships its own default, document it. |
+| #723 custom OCR presets selectable | Check | Confirm gRParse's preset policy never filters admin-registered custom OCR presets out of the allow-list. |
+
 ## Status 2026-10-11 (core 2.101.1 + serve 1.36.0, slim 2.132.0)
 
 | Track | State |

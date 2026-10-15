@@ -1977,3 +1977,110 @@ def test_caption_placement_reexports_markdown_and_rejects_unspecified():
         == CaptionPlacement.LAYOUT
     )
 
+
+
+def test_iwork_numbers_maps_for_slim_2138():
+    assert (
+        _map_input_format(docling_serve_types_pb2.INPUT_FORMAT_IWORK_NUMBERS)
+        == InputFormat.IWORK_NUMBERS
+    )
+
+
+def test_code_formula_expansion_and_repetition_round_trip():
+    custom = _minimal_code_formula_custom(0.0)
+    custom.expansion_factor = 0.05
+    custom.stop_on_repetition = False
+    mapped = to_convert_options(
+        docling_serve_types_pb2.ConvertDocumentOptions(
+            code_formula_custom_config=custom
+        )
+    )
+    config = mapped.code_formula_custom_config
+    assert config.expansion_factor == 0.05
+    assert config.stop_on_repetition is False
+
+
+def test_code_formula_unset_fields_keep_pydantic_defaults():
+    mapped = to_convert_options(
+        docling_serve_types_pb2.ConvertDocumentOptions(
+            code_formula_custom_config=_minimal_code_formula_custom(0.0)
+        )
+    )
+    config = mapped.code_formula_custom_config
+    assert "expansion_factor" not in config.model_fields_set
+    assert "stop_on_repetition" not in config.model_fields_set
+
+
+def test_code_formula_negative_expansion_rejected():
+    custom = _minimal_code_formula_custom(0.0)
+    custom.expansion_factor = -0.1
+    with pytest.raises(ValueError):
+        to_convert_options(
+            docling_serve_types_pb2.ConvertDocumentOptions(
+                code_formula_custom_config=custom
+            )
+        )
+
+
+def test_chart_extraction_chart2csv_output_format_maps():
+    from docling.datamodel.chart_extraction_options import ChartExtractionOutputFormat
+
+    mapped = to_convert_options(
+        docling_serve_types_pb2.ConvertDocumentOptions(
+            chart_extraction_custom_config=_chart_extraction_config(
+                chart2csv=True,
+                output_format=docling_serve_types_pb2.CHART_EXTRACTION_OUTPUT_FORMAT_GRANITE_VISION_CHART2CSV,
+            )
+        )
+    )
+    assert (
+        mapped.chart_extraction_custom_config.output_format
+        == ChartExtractionOutputFormat.GRANITE_VISION_CHART2CSV
+    )
+
+
+def test_s3_verify_ssl_unset_keeps_pydantic_default_true():
+    sources = to_task_sources(
+        [
+            docling_serve_types_pb2.Source(
+                s3=docling_serve_types_pb2.S3Source(
+                    endpoint="s3.example.com",
+                    access_key="ak",
+                    secret_key="sk",
+                    bucket="in",
+                )
+            )
+        ]
+    )
+    assert sources[0].verify_ssl is True
+    assert "verify_ssl" not in sources[0].model_fields_set
+    assert "key_prefix" not in sources[0].model_fields_set
+
+    target = to_task_target(
+        docling_serve_types_pb2.Target(
+            s3=docling_serve_types_pb2.S3Target(
+                endpoint="s3.example.com",
+                access_key="ak",
+                secret_key="sk",
+                bucket="out",
+            )
+        )
+    )
+    assert isinstance(target, S3Target)
+    assert target.verify_ssl is True
+
+
+def test_s3_verify_ssl_explicit_false_is_honoured():
+    target = to_task_target(
+        docling_serve_types_pb2.Target(
+            s3=docling_serve_types_pb2.S3Target(
+                endpoint="s3.example.com",
+                access_key="ak",
+                secret_key="sk",
+                bucket="out",
+                verify_ssl=False,
+            )
+        )
+    )
+    assert isinstance(target, S3Target)
+    assert target.verify_ssl is False
