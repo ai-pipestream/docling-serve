@@ -780,8 +780,9 @@ message PublicFailureInfo {
 // Quality / artifact types
 // ============================================================================
 
-// ConfidenceScores mirrors docling's JSON-safe confidence snapshot. Scores are
-// document-level; Pydantic coerces NaN to null, so absent means unknown.
+// ConfidenceScores mirrors docling's JSON-safe confidence snapshot. The top
+// level carries document scores and `pages` carries one snapshot per page;
+// Pydantic coerces NaN to null, so absent means unknown.
 message ConfidenceScores {
   optional double parse_score = 1;
   optional double layout_score = 2;
@@ -794,6 +795,12 @@ message ConfidenceScores {
   // Raw fallbacks for newer grade vocabularies.
   optional string mean_grade_raw = 9;
   optional string low_grade_raw = 10;
+  // Per-page scores keyed by 1-based page number (docling 2.140
+  // ConfidenceScores.pages). Page entries are flat: their own `pages` map is
+  // always empty. Pydantic types the field Optional[dict] with a {} default;
+  // docling never emits None, and proto has no null map, so None and {} both
+  // encode as an empty map and decode to {}.
+  map<int32, ConfidenceScores> pages = 11;
 }
 
 // ProfilingScope mirrors docling.utils.profiling.ProfilingScope.

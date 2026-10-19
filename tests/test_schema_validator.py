@@ -9,6 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from docling_serve.grpc.schema_validator import (
+    _check_cardinality,
     _is_coercion_allowed,
     _types_compatible,
     validate_docling_document_schema,
@@ -312,3 +313,20 @@ class TestCoercionAllowlist:
 
     def test_not_allowed(self):
         assert not _is_coercion_allowed("foo.bar", "int", "string")
+
+
+def test_optional_map_is_map_like_but_value_types_still_checked():
+    """Optional[dict[K, V]] (docling 2.140 ConfidenceScores.pages) lines up with
+    a proto3 map; the key and value types are still compared strictly."""
+    py = "optional<map<int,message:ConfidenceScores>>"
+    assert (
+        _check_cardinality("pages", py, "map<int32,message:ConfidenceScores>") is None
+    )
+    assert _types_compatible(py, "map<int32,message:ConfidenceScores>")
+    assert not _types_compatible(py, "map<int32,message:QualityGrade>")
+    assert not _types_compatible(py, "map<string,message:ConfidenceScores>")
+    assert "Cardinality mismatch" in _check_cardinality(
+        "pages",
+        "optional<message:ConfidenceScores>",
+        "map<int32,message:ConfidenceScores>",
+    )
