@@ -494,6 +494,14 @@ async def test_get_convert_result_presigned_artifacts_arm(grpc_stub, orchestrato
             low_score=0.4,
             mean_grade=QualityGrade.GOOD,
             low_grade=QualityGrade.POOR,
+            pages={
+                3: ConfidenceScores(
+                    ocr_score=0.4,
+                    low_score=0.4,
+                    mean_grade=QualityGrade.POOR,
+                    low_grade=QualityGrade.POOR,
+                )
+            },
         ),
     )
     orchestrator.results["presigned-1"] = DoclingTaskResult(
@@ -538,6 +546,11 @@ async def test_get_convert_result_presigned_artifacts_arm(grpc_stub, orchestrato
     assert not doc.confidence.HasField("ocr_score")
     assert doc.confidence.mean_grade == docling_serve_types_pb2.QUALITY_GRADE_GOOD
     assert doc.confidence.low_grade == docling_serve_types_pb2.QUALITY_GRADE_POOR
+    assert list(doc.confidence.pages) == [3]
+    page = doc.confidence.pages[3]
+    assert page.ocr_score == pytest.approx(0.4)
+    assert not page.HasField("parse_score")
+    assert page.mean_grade == docling_serve_types_pb2.QUALITY_GRADE_POOR
 
 
 class FailingTaskOrchestrator(FakeOrchestrator):

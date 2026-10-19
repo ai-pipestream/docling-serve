@@ -986,7 +986,12 @@ def _check_cardinality(
             f"Cardinality mismatch at '{path}': proto is repeated ({proto_canonical}) "
             f"but Pydantic is not list-like ({pydantic_canonical})"
         )
-    if proto_is_map and not py_is_map:
+    # optional<map<K,V>> is map-like for proto3 map fields: proto has no null
+    # map, so None and {} share the empty encoding (absent => empty).
+    py_is_optional_map = pydantic_canonical.startswith(
+        "optional<map<"
+    ) and pydantic_canonical.endswith(">")
+    if proto_is_map and not py_is_map and not py_is_optional_map:
         return (
             f"Cardinality mismatch at '{path}': proto is map ({proto_canonical}) "
             f"but Pydantic is not dict-like ({pydantic_canonical})"

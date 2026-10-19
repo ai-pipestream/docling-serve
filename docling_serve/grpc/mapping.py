@@ -1543,7 +1543,68 @@ def confidence_to_proto(
     )
     if low_raw is not None:
         message.low_grade_raw = low_raw
+    # docling 2.140: per-page snapshots. None and {} both mean "no page
+    # scores" and share the empty map (proto has no null map).
+    for page_no, page_scores in (scores.pages or {}).items():
+        message.pages[page_no].CopyFrom(confidence_to_proto(page_scores))
     return message
+
+
+_QUALITY_GRADE_FROM_PROTO = {
+    tag: value for value, tag in _QUALITY_GRADE_TO_PROTO.items()
+}
+
+
+def _quality_grade_from_proto(tag: int, raw: Optional[str], field: str) -> QualityGrade:
+    """Inverse of the *_raw contract for QualityGrade.
+
+    A raw companion is only honoured when this docling build knows the value;
+    an unknown grade is rejected rather than silently mapped to UNSPECIFIED.
+    """
+    if tag != 0:
+        return QualityGrade(_QUALITY_GRADE_FROM_PROTO[tag])
+    if raw:
+        try:
+            return QualityGrade(raw)
+        except ValueError as exc:
+            raise ValueError(
+                f"ConfidenceScores.{field}_raw={raw!r} is not a QualityGrade"
+            ) from exc
+    return QualityGrade.UNSPECIFIED
+
+
+def confidence_from_proto(
+    message: docling_serve_types_pb2.ConfidenceScores,
+) -> ConfidenceScores:
+    """Proto -> Pydantic ConfidenceScores (the inverse of confidence_to_proto)."""
+    scores: dict[str, float] = {}
+    for name in (
+        "parse_score",
+        "layout_score",
+        "table_score",
+        "ocr_score",
+        "mean_score",
+        "low_score",
+    ):
+        if message.HasField(name):
+            scores[name] = getattr(message, name)
+    return ConfidenceScores(
+        **scores,
+        mean_grade=_quality_grade_from_proto(
+            message.mean_grade,
+            message.mean_grade_raw if message.HasField("mean_grade_raw") else None,
+            "mean_grade",
+        ),
+        low_grade=_quality_grade_from_proto(
+            message.low_grade,
+            message.low_grade_raw if message.HasField("low_grade_raw") else None,
+            "low_grade",
+        ),
+        pages={
+            page_no: confidence_from_proto(page)
+            for page_no, page in message.pages.items()
+        },
+    )
 
 
 def public_failure_to_proto(
