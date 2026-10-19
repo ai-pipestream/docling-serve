@@ -9,6 +9,27 @@ Living checklist for the scheduled parity duty. Update when a sync arrives.
 - Always-on rule: `/work/.cursor/rules/docling-parity-duty.mdc`
 - gRParse note: `AGENTS.md` → Recurring parity duty
 
+## Status 2026-10-19 (core 2.103.0 + serve 1.37.0, slim 2.140.0)
+
+| Track | State |
+| --- | --- |
+| docling-core `feat/add-protobuf` | Sync branch `sync/upstream-2026-10-19` merges upstream `main` at **v2.103.0** (2.102.0 plus the 8 post-release commits). Document proto unchanged: the new MIME types are validator-only and `ImageRef.uri` stays a string. Restored the `docling-serialize` console script the original protobuf commit dropped. Descriptor identity against gRParse `document.proto` still fails on 4 gRParse-only messages (`TextAnalysis`, `TextAnalysis.LayerSourcesEntry`, `CollectorWarning`, `ParseIdentity`); this was already true at `a7da172`. |
+| docling-serve `grpc-native-converter` | Branch `feat/docling-2.140-confidence-pages`. Lock: slim **2.140.0** (floor raised to `>=2.140.0`, since the mapping reads `ConfidenceScores.pages`), editable core **2.103.0**, jobkit **3.8.2** (no new release). Wire: `ConfidenceScores.pages = 11`. |
+| gRParse | See the 2026-10-19 decisions below. |
+
+### gRParse decisions for core 2.103 / slim 2.140
+
+| Feature | Decision | Notes |
+| --- | --- | --- |
+| `ConfidenceScores.pages` | Add | `map<int32, ConfidenceScores> pages = 11` in `parse_types.proto`, same tag as serve, with per-page grades. |
+| `VlmStopReason` / `VlmPrediction.stop_reason` | Add, enhanced | Typed enum with a `_raw` companion on VLM element provenance, so clients can tell a length cut-off or content filter from a clean stop. |
+| Contextualized table chunk token limits (#690), `max_tokens_override` | Check, add if cheap | Confirm gRParse's table chunks honour `max_tokens` once headers and context are added. |
+| `_count_column_header_rows` (#823) | Check | Compare gRParse's header-row counting with the upstream rule (spanning headers, unflagged row labels in the leading column). |
+| `allow_image_file_uri` / `load_local_images` (#900) | Check, document | gRParse must never open `file://` or path image URIs from client documents. If it already does not, record that as stricter than upstream (there is no opt-in). |
+| Calendar MIME types (`text/calendar`, `text/x-vcalendar`, `application/calendar+json`, `application/calendar+xml`) (#892) | Defer | docling has no calendar backend; the allowlist only lets `DocumentOrigin` carry the type. gRParse will route calendars when a typed calendar collector exists rather than accept the MIME and produce an empty document. |
+| `ThreadedDoclingParseBackendOptions.max_concurrent_results` | Defer | gRParse does not use the threaded docling-parse backend; its PDF collectors stream pages through gRPC with their own back-pressure. A buffered-page limit has nothing to bound. |
+| `ApiAsrOptions` | Add in grpc-asr | Remote OpenAI-compatible transcription belongs to the ASR collector, with typed fields and `params` as `map<string, ScalarValue>`. |
+
 ## Status 2026-10-14 (core 2.101.1 + serve 1.37.0, slim 2.138.0)
 
 | Track | State |
