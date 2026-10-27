@@ -36,7 +36,7 @@ Sweep correction: `serve_main_unreleased=1`. That commit is `4b0bd7b` (`#744`, m
 
 Pending: `ZipArchiveResult.filename` (tag 2). It is on docling main only, not in 2.142.1. Do not add it until a release contains it.
 
-The editable `docling-core` sibling used at lock time is a local merge of fork `feat/add-protobuf` with upstream `v2.104.0` (slim 2.142.1 requires `docling-core>=2.103.1`). Published `feat/add-protobuf` is still `a7da172` (2.101.1). Core sync is a separate task. That sibling was not pushed.
+The lock pins docling-core **2.104.0** from `https://github.com/ai-pipestream/docling-core` at `099ccf93820aff5c02cd1877269a364bdc7c4a9b` (branch `ai-pipestream/sync-upstream-2026-10-26-8ae9`). Slim 2.142.1 requires `docling-core>=2.103.1`. Published `feat/add-protobuf` is still `a7da172` (2.101.1).
 
 ### gRParse
 

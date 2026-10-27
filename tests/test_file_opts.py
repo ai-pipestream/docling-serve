@@ -27,16 +27,22 @@ def auth_headers():
     return headers
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def app():
-    app = create_app()
+    # Picture description in this module calls a remote API. The server
+    # refuses that unless remote services are enabled on purpose.
+    original_enable_remote_services = docling_serve_settings.enable_remote_services
+    docling_serve_settings.enable_remote_services = True
+    try:
+        app = create_app()
+        async with LifespanManager(app) as manager:
+            print("Launching lifespan of app.")
+            yield manager.app
+    finally:
+        docling_serve_settings.enable_remote_services = original_enable_remote_services
 
-    async with LifespanManager(app) as manager:
-        print("Launching lifespan of app.")
-        yield manager.app
 
-
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def client(app):
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://app.io"
@@ -45,7 +51,7 @@ async def client(app):
         yield client
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_convert_file(client: AsyncClient, auth_headers: dict):
     """Test convert single file to all outputs"""
 

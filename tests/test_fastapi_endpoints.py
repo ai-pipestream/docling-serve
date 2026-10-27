@@ -29,7 +29,7 @@ def auth_headers():
     return headers
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def app():
     app = create_app()
 
@@ -38,7 +38,7 @@ async def app():
         yield manager.app
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def client(app):
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://app.io"
@@ -47,14 +47,14 @@ async def client(app):
         yield client
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_health(client: AsyncClient):
     response = await client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_openapijson(client: AsyncClient):
     response = await client.get("/openapi.json")
     assert response.status_code == 200
@@ -62,7 +62,7 @@ async def test_openapijson(client: AsyncClient):
     assert "openapi" in schema
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_convert_file(client: AsyncClient, auth_headers: dict):
     """Test convert single file to all outputs"""
 
@@ -178,7 +178,7 @@ async def test_convert_file(client: AsyncClient, auth_headers: dict):
         )
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_referenced_artifacts(client: AsyncClient, auth_headers: dict):
     """Test that paths in the zip file are relative to the zip file root."""
 

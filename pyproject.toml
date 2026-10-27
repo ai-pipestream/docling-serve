@@ -208,7 +208,7 @@ torchvision = [
 pytorch-triton-rocm = [
   { index = "pytorch-rocm", marker = "sys_platform == 'linux'" },
 ]
-docling-core = { path = "../docling-core", editable = true }
+docling-core = { git = "https://github.com/ai-pipestream/docling-core", rev = "099ccf93820aff5c02cd1877269a364bdc7c4a9b" }
 
 triton-rocm = [
     { index = "pytorch-rocm72", group = "rocm72", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" }

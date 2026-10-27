@@ -2086,7 +2086,7 @@ wheels = [
 [[package]]
 name = "docling-core"
 version = "2.104.0"
-source = { editable = "../docling-core" }
+source = { git = "https://github.com/ai-pipestream/docling-core?rev=099ccf93820aff5c02cd1877269a364bdc7c4a9b#099ccf93820aff5c02cd1877269a364bdc7c4a9b" }
 dependencies = [
     { name = "defusedxml" },
     { name = "doclang" },
@@ -2114,87 +2114,6 @@ chunking = [
     { name = "tree-sitter-javascript" },
     { name = "tree-sitter-python" },
     { name = "tree-sitter-typescript" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "click", marker = "extra == 'dclq'", specifier = ">=8.0.0" },
-    { name = "datasets", marker = "extra == 'examples'", specifier = ">=4.0.0" },
-    { name = "defusedxml", specifier = ">=0.7.1,<0.8.0" },
-    { name = "doclang", specifier = ">=0.8,<0.9" },
-    { name = "doclang", marker = "extra == 'dclq'", specifier = ">=0.8,<0.9" },
-    { name = "jsonref", specifier = ">=1.1.0,<2.0.0" },
-    { name = "jsonschema", specifier = ">=4.16.0,<5.0.0" },
-    { name = "latex2mathml", specifier = ">=3.77.0,<4.0.0" },
-    { name = "lxml", marker = "extra == 'dclq'", specifier = ">=6.0.2" },
-    { name = "matplotlib", marker = "extra == 'examples'", specifier = ">=3.7.0" },
-    { name = "openpyxl", marker = "extra == 'examples'", specifier = ">=3.1.5" },
-    { name = "pandas", specifier = ">=2.1.4,<4.0.0" },
-    { name = "pillow", specifier = ">=10.0.0,<14.0.0" },
-    { name = "protobuf", specifier = ">=4.25.0" },
-    { name = "pydantic", specifier = ">=2.6.0,!=2.10.0,!=2.10.1,!=2.10.2,<3.0.0" },
-    { name = "pydantic-settings", specifier = ">=2.14.0" },
-    { name = "pyyaml", specifier = ">=5.1,<7.0.0" },
-    { name = "requests", specifier = ">=2.34.2,<3.0.0" },
-    { name = "semchunk", marker = "extra == 'chunking'", specifier = ">=2.2.0,<4.0.0" },
-    { name = "semchunk", marker = "extra == 'chunking-openai'", specifier = ">=2.2.0,<4.0.0" },
-    { name = "tabulate", specifier = ">=0.9.0,<0.11.0" },
-    { name = "tiktoken", marker = "extra == 'chunking-openai'", specifier = ">=0.9.0,<0.13.0" },
-    { name = "transformers", marker = "extra == 'chunking'", specifier = ">=4.42.0,<6.0.0" },
-    { name = "tree-sitter", marker = "extra == 'chunking'", specifier = ">=0.25.0,<0.27.0" },
-    { name = "tree-sitter", marker = "extra == 'chunking-openai'", specifier = ">=0.25.0,<0.27.0" },
-    { name = "tree-sitter-c", marker = "extra == 'chunking'", specifier = ">=0.23.4" },
-    { name = "tree-sitter-c", marker = "extra == 'chunking-openai'", specifier = ">=0.23.4" },
-    { name = "tree-sitter-javascript", marker = "extra == 'chunking'", specifier = ">=0.23.1" },
-    { name = "tree-sitter-javascript", marker = "extra == 'chunking-openai'", specifier = ">=0.23.1" },
-    { name = "tree-sitter-python", marker = "extra == 'chunking'", specifier = ">=0.23.6" },
-    { name = "tree-sitter-python", marker = "extra == 'chunking-openai'", specifier = ">=0.23.6" },
-    { name = "tree-sitter-typescript", marker = "extra == 'chunking'", specifier = ">=0.23.2" },
-    { name = "tree-sitter-typescript", marker = "extra == 'chunking-openai'", specifier = ">=0.23.2" },
-    { name = "typer", specifier = ">=0.12.5,<0.27.0" },
-    { name = "typer", marker = "extra == 'dclq'", specifier = ">=0.15.1,<0.25.0" },
-    { name = "typing-extensions", specifier = ">=4.12.2,<5.0.0" },
-]
-provides-extras = ["dclq", "chunking", "chunking-openai", "examples"]
-
-[package.metadata.requires-dev]
-constraints = [
-    { name = "pandas", marker = "python_full_version < '3.11'", specifier = ">=2.1.4,<3.0.0" },
-    { name = "pandas", marker = "python_full_version >= '3.11'", specifier = ">=2.1.4,<4.0.0" },
-]
-dev = [
-    { name = "coverage", specifier = "~=7.6" },
-    { name = "dclq", editable = "../docling-core/packages/dclq" },
-    { name = "doclang", extras = ["schematron-saxon"], specifier = ">=0.8,<0.9" },
-    { name = "grpcio-tools", specifier = ">=1.80.0" },
-    { name = "ipykernel", specifier = "~=6.29" },
-    { name = "jsondiff", specifier = "~=2.0" },
-    { name = "opencv-python-headless", specifier = ">=4.6.0.66,<5.0.0.0" },
-    { name = "pandas-stubs", specifier = "~=2.1" },
-    { name = "prek", specifier = ">=0.3.10" },
-    { name = "pytest", specifier = "~=9.0.3" },
-    { name = "pytest-cov", specifier = ">=6.1.1" },
-    { name = "python-semantic-release", specifier = "~=7.34.6" },
-    { name = "ruff", specifier = "==0.16.10" },
-    { name = "tree-sitter-java-orchard", marker = "python_full_version >= '3.10'", specifier = ">=0.3.0,<1.0.0" },
-    { name = "ty", specifier = "==0.0.33" },
-    { name = "types-defusedxml", specifier = ">=0.7.0.20250822,<0.8.0" },
-    { name = "types-setuptools", specifier = "~=70.3" },
-    { name = "universal-pathlib", specifier = ">=0.3.10" },
-]
-pr-fast-checks = [
-    { name = "pandas-stubs", specifier = "~=2.1" },
-    { name = "pydantic", specifier = ">=2.6.0,!=2.10.0,!=2.10.1,!=2.10.2,<3.0.0" },
-    { name = "ruff", specifier = "==0.16.10" },
-    { name = "ty", specifier = "==0.0.33" },
-    { name = "types-defusedxml", specifier = ">=0.7.0.20250822,<0.8.0" },
-    { name = "types-setuptools", specifier = "~=70.3" },
-]
-typecheck = [
-    { name = "pandas-stubs", specifier = "~=2.1" },
-    { name = "ty", specifier = "==0.0.33" },
-    { name = "types-defusedxml", specifier = ">=0.7.0.20250822,<0.8.0" },
-    { name = "types-setuptools", specifier = "~=70.3" },
 ]
 
 [[package]]
@@ -2452,7 +2371,7 @@ typecheck = [
 
 [package.metadata]
 requires-dist = [
-    { name = "docling-core", editable = "../docling-core" },
+    { name = "docling-core", git = "https://github.com/ai-pipestream/docling-core?rev=099ccf93820aff5c02cd1877269a364bdc7c4a9b" },
     { name = "docling-jobkit", extras = ["rq", "ray", "vlm", "azure", "gcloudstorage", "gdrive"], specifier = ">=3.9.1,<4" },
     { name = "docling-mcp", specifier = ">=1.0.0" },
     { name = "docling-slim", extras = ["standard", "service-client", "models-remote", "format-opendocument"], specifier = ">=2.140.0,<3.0.0" },
