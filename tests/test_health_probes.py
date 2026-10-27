@@ -16,6 +16,7 @@ from docling_serve.datamodel.responses import (
     HealthCheckResponse,
     ReadinessResponse,
 )
+from docling_serve.orchestrator_factory import get_async_orchestrator
 from docling_serve.settings import AsyncEngine, docling_serve_settings
 
 
@@ -28,6 +29,7 @@ def event_loop():
 async def app():
     original_load_models_at_boot = docling_serve_settings.load_models_at_boot
     docling_serve_settings.load_models_at_boot = False
+    get_async_orchestrator.cache_clear()
     try:
         app = create_app()
         async with LifespanManager(app) as manager:

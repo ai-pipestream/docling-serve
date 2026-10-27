@@ -9,6 +9,7 @@ from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
 
 from docling_serve.app import create_app
+from docling_serve.orchestrator_factory import get_async_orchestrator
 from docling_serve.settings import docling_serve_settings
 
 
@@ -27,6 +28,7 @@ def auth_headers():
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def app():
+    get_async_orchestrator.cache_clear()
     app = create_app()
 
     async with LifespanManager(app) as manager:

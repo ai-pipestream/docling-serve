@@ -11,6 +11,7 @@ from docling_core.types import DoclingDocument
 from docling_core.types.doc.document import PictureDescriptionData
 
 from docling_serve.app import create_app
+from docling_serve.orchestrator_factory import get_async_orchestrator
 from docling_serve.settings import docling_serve_settings
 
 
@@ -33,6 +34,7 @@ async def app():
     # refuses that unless remote services are enabled on purpose.
     original_enable_remote_services = docling_serve_settings.enable_remote_services
     docling_serve_settings.enable_remote_services = True
+    get_async_orchestrator.cache_clear()
     try:
         app = create_app()
         async with LifespanManager(app) as manager:
