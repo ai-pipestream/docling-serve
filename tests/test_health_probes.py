@@ -16,6 +16,7 @@ from docling_serve.datamodel.responses import (
     HealthCheckResponse,
     ReadinessResponse,
 )
+from docling_serve.orchestrator_factory import get_async_orchestrator
 from docling_serve.settings import AsyncEngine, docling_serve_settings
 
 
@@ -24,10 +25,11 @@ def event_loop():
     return asyncio.get_event_loop()
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def app():
     original_load_models_at_boot = docling_serve_settings.load_models_at_boot
     docling_serve_settings.load_models_at_boot = False
+    get_async_orchestrator.cache_clear()
     try:
         app = create_app()
         async with LifespanManager(app) as manager:
@@ -36,7 +38,7 @@ async def app():
         docling_serve_settings.load_models_at_boot = original_load_models_at_boot
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def client(app):
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://app.io"
@@ -44,7 +46,7 @@ async def client(app):
         yield client
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_health(client: AsyncClient):
     response = await client.get("/health")
     assert response.status_code == 200
@@ -52,7 +54,7 @@ async def test_health(client: AsyncClient):
     assert data["status"] == "ok"
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_ready(client: AsyncClient):
     response = await client.get("/ready")
     assert response.status_code == 200
@@ -60,7 +62,7 @@ async def test_ready(client: AsyncClient):
     assert data["status"] == "ok"
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_readyz_alias(client: AsyncClient):
     response = await client.get("/readyz")
     assert response.status_code == 200
@@ -68,7 +70,7 @@ async def test_readyz_alias(client: AsyncClient):
     assert data["status"] == "ok"
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_readyz_for_ray_runs_deep_connection_check(client: AsyncClient):
     original_engine = docling_serve_settings.eng_kind
     original_debug = docling_serve_settings.debug_error_details
@@ -93,7 +95,7 @@ async def test_readyz_for_ray_runs_deep_connection_check(client: AsyncClient):
     orchestrator.check_connection.assert_awaited_once()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_readyz_exposes_raw_error_in_debug_mode(client: AsyncClient):
     original_engine = docling_serve_settings.eng_kind
     original_debug = docling_serve_settings.debug_error_details
@@ -117,7 +119,7 @@ async def test_readyz_exposes_raw_error_in_debug_mode(client: AsyncClient):
     assert response.json()["detail"] == "Ray dispatcher unavailable"
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_livez_alias(client: AsyncClient):
     response = await client.get("/livez")
     assert response.status_code == 200
@@ -125,7 +127,7 @@ async def test_livez_alias(client: AsyncClient):
     assert data["status"] == "ok"
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_livez_for_ray_does_not_check_orchestrator_health(
     client: AsyncClient,
 ):
@@ -144,7 +146,7 @@ async def test_livez_for_ray_does_not_check_orchestrator_health(
     assert response.json()["status"] == "ok"
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_ready_returns_503_when_models_not_loaded(client: AsyncClient):
     _models_ready.clear()
     try:
@@ -155,7 +157,7 @@ async def test_ready_returns_503_when_models_not_loaded(client: AsyncClient):
         _models_ready.set()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_livez_returns_503_when_queue_processor_failed(client: AsyncClient):
     _queue_processor_failed.set()
     try:
@@ -166,7 +168,7 @@ async def test_livez_returns_503_when_queue_processor_failed(client: AsyncClient
         _queue_processor_failed.clear()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_ready_returns_503_when_queue_processor_failed(client: AsyncClient):
     _queue_processor_failed.set()
     try:

@@ -61,6 +61,8 @@ def test_rq_worker_passes_generic_presigned_config(monkeypatch):
     captured: dict[str, object] = {}
 
     class _Worker:
+        name = "rq-worker-test"
+
         def __init__(self, *_args, **kwargs):
             captured.update(kwargs)
 

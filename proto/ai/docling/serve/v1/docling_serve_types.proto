@@ -167,6 +167,8 @@ enum VlmModelType {
 }
 
 // Response format for VLM model output.
+// Tags 1-5 stay as first published. Later members follow docling 2.142.1's
+// ResponseFormat and keep their own tags; declaration order is not the wire id.
 enum ResponseFormat {
   RESPONSE_FORMAT_UNSPECIFIED = 0;
   RESPONSE_FORMAT_DOCTAGS = 1;
@@ -174,6 +176,14 @@ enum ResponseFormat {
   RESPONSE_FORMAT_HTML = 3;
   RESPONSE_FORMAT_OTSL = 4;
   RESPONSE_FORMAT_PLAINTEXT = 5;
+  RESPONSE_FORMAT_DOCLANG = 6;
+  RESPONSE_FORMAT_DEEPSEEKOCR_MARKDOWN = 7;
+  RESPONSE_FORMAT_UNLIMITED_OCR_MARKDOWN = 8;
+  RESPONSE_FORMAT_CHANDRA_HTML = 9;
+  RESPONSE_FORMAT_DOTS_JSON = 10;
+  RESPONSE_FORMAT_NEMOTRON_PARSE_V2 = 11;
+  RESPONSE_FORMAT_NEMOTRON_PARSE_V3_5 = 12;
+  RESPONSE_FORMAT_MINERU2 = 13;
 }
 
 // Inference framework for local VLM models.
@@ -532,6 +542,9 @@ message VlmModelLocal {
   optional TransformersModelType transformers_model_type = 6;
   map<string, ScalarValue> extra_generation_config = 7;
   optional double temperature = 8;
+  // Forward-compat companion for response_format. A value the enum does not
+  // name yet is carried here and is not dropped.
+  optional string response_format_raw = 9;
 }
 
 message VlmModelApi {
@@ -544,10 +557,15 @@ message VlmModelApi {
   optional double scale = 7;
   optional ResponseFormat response_format = 8;
   optional double temperature = 9;
+  // Forward-compat companion for response_format.
+  optional string response_format_raw = 10;
 }
 
 message BaseVlmEngineOptions {
   VlmEngineType engine_type = 1;
+  // Inline engines only (auto, transformers, mlx, vllm). API engines reject
+  // the field. Distinct from VlmModelSpec.trust_remote_code.
+  optional bool trust_remote_code = 2;
 }
 
 message EngineModelConfig {
@@ -585,6 +603,8 @@ message VlmModelSpec {
   optional double temperature = 11;
   optional int32 max_new_tokens = 12;
   map<string, ScalarValue> extra_generation_config = 13;
+  // Forward-compat companion for response_format.
+  optional string response_format_raw = 14;
 }
 
 message VlmConvertOptions {
@@ -1047,6 +1067,11 @@ message ConvertDocumentRequest {
   // Progress callbacks (ConvertSourcesRequest.callbacks). Rejected when the
   // service policy disables callbacks.
   repeated CallbackSpec callbacks = 4;
+  // gRPC form of the REST Accept-Docling-Document-Version header.
+  // Pattern ^\d{1,9}\.\d{1,9}\.\d{1,9}$. Versions below 1.{FIRST_SUPPORTED_MINOR}.0
+  // are rejected. JSON exports and JSON target files are down-projected to it.
+  // The typed DoclingDocument stays on the current schema.
+  optional string target_document_version = 5;
 }
 
 // BatchConvertDocumentRequest mirrors POST /v1/convert/source/batch
@@ -1060,6 +1085,8 @@ message BatchConvertDocumentRequest {
   optional Target target = 3;
   repeated Target targets = 4;
   repeated CallbackSpec callbacks = 5;
+  // Same contract as ConvertDocumentRequest.target_document_version.
+  optional string target_document_version = 6;
 }
 
 // ConvertDocumentResponse mirrors the REST convert response body.

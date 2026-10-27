@@ -275,6 +275,9 @@ _PROTO_ONLY_FIELD_NAMES: set[str] = {
     # docling-core MarkdownParams.caption_placement. ConvertDocumentsOptions
     # does not carry it; gRPC applies it when re-exporting Markdown.
     "caption_placement",
+    # gRPC form of the REST Accept-Docling-Document-Version header.
+    # ConvertSourcesRequest and BatchConvertSourcesRequest do not carry it.
+    "target_document_version",
 }
 
 # Wire form of Pydantic `extra="allow"` payloads on serve connector models
@@ -349,6 +352,9 @@ _RAW_FALLBACK_SUFFIXES: set[str] = {
     "low_grade_raw",
     "artifact_type_raw",
     "output_format_raw",
+    # ResponseFormat companion. A value the enum does not name yet is carried
+    # here so the mapping does not drop it.
+    "response_format_raw",
     "task_type_raw",
     "component_type_raw",
     "document_type_raw",

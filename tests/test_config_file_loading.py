@@ -70,24 +70,24 @@ def test_env_overrides_config_file(monkeypatch):
         Path(config_path).unlink()
 
 
-def test_nonexistent_config_file_ignored(monkeypatch):
-    """Test that nonexistent config file is silently ignored."""
+def test_nonexistent_config_file_raises(monkeypatch):
+    """A missing config file is a configuration error."""
     monkeypatch.setenv("DOCLING_SERVE_CONFIG_FILE", "/nonexistent/config.yaml")
 
-    settings = DoclingServeSettings()
-    assert settings.default_vlm_preset == "granite_docling"
+    with pytest.raises(FileNotFoundError, match="Config file not found"):
+        DoclingServeSettings()
 
 
-def test_invalid_yaml_ignored(monkeypatch):
-    """Test that invalid YAML is silently ignored."""
+def test_invalid_yaml_raises(monkeypatch):
+    """Invalid YAML in the configured file fails fast."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
         f.write("invalid: yaml: [")
         config_path = f.name
 
     try:
         monkeypatch.setenv("DOCLING_SERVE_CONFIG_FILE", config_path)
-        settings = DoclingServeSettings()
-        assert settings.default_vlm_preset == "granite_docling"
+        with pytest.raises(RuntimeError, match="Failed to parse config file"):
+            DoclingServeSettings()
     finally:
         Path(config_path).unlink()
 
