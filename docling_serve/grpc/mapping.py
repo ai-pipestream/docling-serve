@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import enum
+import json
 import logging
+import re
 from collections.abc import Iterable
 from typing import Optional
 
@@ -76,6 +78,12 @@ from docling.datamodel.stage_model_specs import (
     EngineModelConfig,
     VlmModelSpec,
 )
+from docling.datamodel.vlm_engine_options import (
+    AutoInlineVlmEngineOptions,
+    MlxVlmEngineOptions,
+    TransformersVlmEngineOptions,
+    VllmVlmEngineOptions,
+)
 from docling.datamodel.vlm_model_specs import VlmModelType
 from docling.models.inference_engines.vlm.base import (
     BaseVlmEngineOptions,
@@ -84,11 +92,13 @@ from docling.models.inference_engines.vlm.base import (
 from docling.utils.profiling import ProfilingItem
 from docling_core.proto.gen.ai.docling.core.v1 import docling_document_pb2
 from docling_core.types.doc import ImageRefMode
+from docling_core.types.doc.common.constants import FIRST_SUPPORTED_MINOR
 from docling_core.types.doc.labels import PictureClassificationLabel
 from docling_jobkit.datamodel.chunking import (
     HierarchicalChunkerOptions,
     HybridChunkerOptions,
 )
+from docling_jobkit.datamodel.exportable_document import project_document_dict
 from docling_jobkit.datamodel.result import DoclingTaskResult
 from docling_jobkit.datamodel.task import Task
 from docling_jobkit.datamodel.task_meta import TaskProcessingMeta, TaskStatus, TaskType
@@ -279,17 +289,75 @@ def _map_vlm_model_type(value: int) -> Optional[VlmModelType]:
 
 
 def _map_response_format(value: int) -> Optional[ResponseFormat]:
+    """Map a known ResponseFormat tag. UNSPECIFIED and unknown tags are None.
+
+    Callers that received an explicit tag must not drop None; see
+    ``_apply_response_format``.
+    """
     name = _enum_name(docling_serve_types_pb2.ResponseFormat, value)
-    if not name:
+    if not name or name == "RESPONSE_FORMAT_UNSPECIFIED":
         return None
-    mapping = {
-        "RESPONSE_FORMAT_DOCTAGS": ResponseFormat.DOCTAGS,
-        "RESPONSE_FORMAT_MARKDOWN": ResponseFormat.MARKDOWN,
-        "RESPONSE_FORMAT_HTML": ResponseFormat.HTML,
-        "RESPONSE_FORMAT_OTSL": ResponseFormat.OTSL,
-        "RESPONSE_FORMAT_PLAINTEXT": ResponseFormat.PLAINTEXT,
-    }
-    return mapping.get(name)
+    member = name.removeprefix("RESPONSE_FORMAT_")
+    try:
+        return ResponseFormat[member]
+    except KeyError:
+        return None
+
+
+def _apply_response_format(data: dict, proto, *, field_label: str) -> None:
+    """Copy response_format onto a VLM model dict. Nothing is dropped.
+
+    Unset leaves the model default. An explicit UNSPECIFIED tag requires
+    ``response_format_raw``. A known tag wins, and a raw companion must match
+    it or the request is rejected. Raw alone is assigned as a string so
+    Pydantic validates it.
+    """
+    has_enum = proto.HasField("response_format")
+    raw = proto.response_format_raw if proto.HasField("response_format_raw") else ""
+    if not has_enum:
+        if raw:
+            data["response_format"] = raw
+        return
+    mapped = _map_response_format(proto.response_format)
+    if mapped is None:
+        if (
+            proto.response_format == docling_serve_types_pb2.RESPONSE_FORMAT_UNSPECIFIED
+            and raw
+        ):
+            data["response_format"] = raw
+            return
+        if proto.response_format == docling_serve_types_pb2.RESPONSE_FORMAT_UNSPECIFIED:
+            raise ValueError(f"{field_label}.response_format is unspecified")
+        raise ValueError(f"{field_label}.response_format is not a known format")
+    if raw and raw != mapped.value:
+        raise ValueError(
+            f"{field_label}.response_format and response_format_raw disagree"
+        )
+    data["response_format"] = mapped
+
+
+_TARGET_DOCUMENT_VERSION_RE = re.compile(r"^\d{1,9}\.\d{1,9}\.\d{1,9}$")
+
+
+def validate_target_document_version(value: Optional[str]) -> Optional[str]:
+    """Accept a document schema version or return None when it is absent.
+
+    The pattern is the jobkit ``Task.target_document_version`` constraint.
+    Versions older than ``1.{FIRST_SUPPORTED_MINOR}.0`` are rejected, matching
+    the REST ``Accept-Docling-Document-Version`` check. An empty string is
+    treated as absent.
+    """
+    if not value:
+        return None
+    if _TARGET_DOCUMENT_VERSION_RE.fullmatch(value) is None:
+        raise ValueError(f"unparseable target_document_version '{value}'")
+    major_s, minor_s, _patch = value.split(".")
+    if (int(major_s), int(minor_s)) < (1, FIRST_SUPPORTED_MINOR):
+        raise ValueError(
+            f"unsupported target_document_version '{value}'; "
+            f"oldest supported is 1.{FIRST_SUPPORTED_MINOR}.0"
+        )
+    return value
 
 
 def _map_inference_framework(value: int) -> Optional[InferenceFramework]:
@@ -494,10 +562,7 @@ def _to_vlm_model_spec(proto) -> VlmModelSpec:
         data["revision"] = proto.revision
     if proto.HasField("prompt"):
         data["prompt"] = proto.prompt
-    if proto.HasField("response_format"):
-        val = _map_response_format(proto.response_format)
-        if val is not None:
-            data["response_format"] = val
+    _apply_response_format(data, proto, field_label="VlmModelSpec")
     if proto.supported_engines:
         engines = [
             e for e in (_map_vlm_engine_type(v) for v in proto.supported_engines) if e
@@ -532,8 +597,32 @@ def _to_vlm_model_spec(proto) -> VlmModelSpec:
 
 
 def _to_base_vlm_engine_options(proto) -> BaseVlmEngineOptions:
-    engine = _map_vlm_engine_type(proto.engine_type) or VlmEngineType.TRANSFORMERS
-    return BaseVlmEngineOptions(engine_type=engine)
+    """Map engine options. trust_remote_code applies only to inline engines.
+
+    Unset trust keeps ``BaseVlmEngineOptions`` so defaults do not change.
+    A set flag instantiates the concrete inline subclass. API engines reject
+    the flag. An unknown engine with the flag set is rejected rather than
+    applied to the transformers fallback.
+    """
+    engine = _map_vlm_engine_type(proto.engine_type)
+    has_trust = proto.HasField("trust_remote_code")
+    if engine is None:
+        if has_trust:
+            raise ValueError("trust_remote_code requires a known VLM engine_type")
+        return BaseVlmEngineOptions(engine_type=VlmEngineType.TRANSFORMERS)
+    if not has_trust:
+        return BaseVlmEngineOptions(engine_type=engine)
+    if VlmEngineType.is_api_variant(engine):
+        raise ValueError("trust_remote_code is not supported for API VLM engines")
+    concrete = {
+        VlmEngineType.AUTO_INLINE: AutoInlineVlmEngineOptions,
+        VlmEngineType.TRANSFORMERS: TransformersVlmEngineOptions,
+        VlmEngineType.MLX: MlxVlmEngineOptions,
+        VlmEngineType.VLLM: VllmVlmEngineOptions,
+    }.get(engine)
+    if concrete is None:
+        raise ValueError("trust_remote_code is not supported for this VLM engine")
+    return concrete(trust_remote_code=proto.trust_remote_code)
 
 
 def _to_vlm_convert_options(proto) -> VlmConvertOptions:
@@ -630,7 +719,7 @@ def _to_chart_extraction_vlm_engine_options(proto):
             "chart_extraction_custom_config.model_spec requires name and default_repo_id"
         )
     data: dict = {
-        "engine_options": BaseVlmEngineOptions(engine_type=engine),
+        "engine_options": _to_base_vlm_engine_options(proto.engine_options),
         "model_spec": _to_vlm_model_spec(proto.model_spec),
     }
     if proto.HasField("chart2csv"):
@@ -670,9 +759,7 @@ def _to_chart_extraction_vlm_engine_options(proto):
                 raise ValueError(
                     "chart_extraction_custom_config.output_format and output_format_raw disagree"
                 )
-            data["output_format"] = (
-                ChartExtractionOutputFormat.GRANITE_VISION_CHART2CSV
-            )
+            data["output_format"] = ChartExtractionOutputFormat.GRANITE_VISION_CHART2CSV
         else:
             raise ValueError(
                 "chart_extraction_custom_config.output_format is not a known format"
@@ -692,10 +779,7 @@ def _to_vlm_model_local(proto) -> VlmModelLocal:
         data["prompt"] = proto.prompt
     if proto.HasField("scale"):
         data["scale"] = proto.scale
-    if proto.HasField("response_format"):
-        val = _map_response_format(proto.response_format)
-        if val is not None:
-            data["response_format"] = val
+    _apply_response_format(data, proto, field_label="VlmModelLocal")
     if proto.HasField("inference_framework"):
         val = _map_inference_framework(proto.inference_framework)
         if val is not None:
@@ -729,10 +813,7 @@ def _to_vlm_model_api(proto) -> VlmModelApi:
         data["prompt"] = proto.prompt
     if proto.HasField("scale"):
         data["scale"] = proto.scale
-    if proto.HasField("response_format"):
-        val = _map_response_format(proto.response_format)
-        if val is not None:
-            data["response_format"] = val
+    _apply_response_format(data, proto, field_label="VlmModelApi")
     if proto.HasField("temperature"):
         data["temperature"] = proto.temperature
     return VlmModelApi.model_validate(data)
@@ -1444,7 +1525,9 @@ def _profiling_item_to_proto(
         count=int(item.count),
         times=list(item.times or []),
         start_timestamps=[
-            ts.isoformat().replace("+00:00", "Z") if hasattr(ts, "isoformat") else str(ts)
+            ts.isoformat().replace("+00:00", "Z")
+            if hasattr(ts, "isoformat")
+            else str(ts)
             for ts in (item.start_timestamps or [])
         ],
     )
@@ -1662,10 +1745,23 @@ def document_artifact_item_to_proto(
     return message
 
 
+def _json_export(doc, target_document_version: Optional[str]) -> str:
+    """JSON export, down-projected when a target schema version is set.
+
+    A projected dict is serialized as-is. Revalidating it as DoclingDocument
+    would put the current schema version back.
+    """
+    projected = project_document_dict(doc.json_content, target_document_version)
+    if projected is None:
+        return doc.json_content.model_dump_json()
+    return json.dumps(projected, ensure_ascii=False)
+
+
 def _build_exports(
     doc,
     requested_formats: Optional[set[OutputFormat]],
     caption_placement=None,
+    target_document_version: Optional[str] = None,
 ) -> Optional[docling_serve_types_pb2.DocumentExports]:
     def wants(fmt: OutputFormat) -> bool:
         return requested_formats is None or fmt in requested_formats
@@ -1674,7 +1770,7 @@ def _build_exports(
     has_any = False
 
     if wants(OutputFormat.JSON) and doc.json_content is not None:
-        exports.json = doc.json_content.model_dump_json()
+        exports.json = _json_export(doc, target_document_version)
         has_any = True
     if wants(OutputFormat.MARKDOWN):
         if caption_placement is not None:
@@ -1746,15 +1842,20 @@ def export_document_to_proto(
     doc,
     requested_formats: Optional[set[OutputFormat]] = None,
     caption_placement=None,
+    target_document_version: Optional[str] = None,
 ) -> docling_serve_types_pb2.ExportDocumentResponse:
     message = docling_serve_types_pb2.ExportDocumentResponse(filename=doc.filename)
     # doc.json_content is the live Pydantic DoclingDocument object (not a JSON string).
     # It's named "json_content" in docling_jobkit because REST serializes it as JSON.
     # For gRPC, we convert it field-by-field into the native protobuf representation.
+    # target_document_version projects only the JSON export, not message.doc.
     if doc.json_content is not None:
         message.doc.CopyFrom(_docling_document_to_proto(doc.json_content))
     exports = _build_exports(
-        doc, requested_formats, caption_placement=caption_placement
+        doc,
+        requested_formats,
+        caption_placement=caption_placement,
+        target_document_version=target_document_version,
     )
     if exports is not None:
         message.exports.CopyFrom(exports)
@@ -1765,13 +1866,17 @@ def document_response_to_proto(
     doc,
     requested_formats: Optional[set[OutputFormat]] = None,
     caption_placement=None,
+    target_document_version: Optional[str] = None,
 ) -> docling_serve_types_pb2.DocumentResponse:
     message = docling_serve_types_pb2.DocumentResponse(filename=doc.filename)
     # See export_document_to_proto for why this field is called json_content.
     if doc.json_content is not None:
         message.doc.CopyFrom(_docling_document_to_proto(doc.json_content))
     exports = _build_exports(
-        doc, requested_formats, caption_placement=caption_placement
+        doc,
+        requested_formats,
+        caption_placement=caption_placement,
+        target_document_version=target_document_version,
     )
     if exports is not None:
         message.exports.CopyFrom(exports)
@@ -1783,6 +1888,7 @@ def convert_result_to_proto(
     processing_time: float,
     requested_formats: Optional[set[OutputFormat]] = None,
     caption_placement=None,
+    target_document_version: Optional[str] = None,
 ) -> docling_serve_types_pb2.ConvertDocumentResponse:
     status_enum, status_raw = _conversion_status_enum_and_raw(result.status)
     response = docling_serve_types_pb2.ConvertDocumentResponse(
@@ -1790,6 +1896,7 @@ def convert_result_to_proto(
             result.document,
             requested_formats,
             caption_placement=caption_placement,
+            target_document_version=target_document_version,
         ),
         errors=[_error_item_to_proto(err) for err in result.errors],
         processing_time=processing_time,
@@ -1854,6 +1961,7 @@ def set_convert_result(
     task_result: DoclingTaskResult,
     requested_formats: Optional[set[OutputFormat]] = None,
     caption_placement=None,
+    target_document_version: Optional[str] = None,
 ) -> None:
     """Fill the convert result oneof on any wrapper that declares it.
 
@@ -1869,6 +1977,7 @@ def set_convert_result(
                 task_result.processing_time,
                 requested_formats,
                 caption_placement=caption_placement,
+                target_document_version=target_document_version,
             )
         )
     elif isinstance(result, ZipArchiveResult):

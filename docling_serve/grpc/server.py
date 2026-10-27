@@ -51,9 +51,9 @@ from .gen.ai.docling.serve.v1 import (
 )
 from .mapping import (
     UnexpectedResultType,
+    caption_placement_from_options,
     clear_response_to_proto,
     requested_output_formats,
-    caption_placement_from_options,
     set_chunk_result,
     set_convert_result,
     task_failure_to_proto,
@@ -65,6 +65,7 @@ from .mapping import (
     to_hybrid_chunk_options,
     to_task_sources,
     to_task_target,
+    validate_target_document_version,
     with_single_use_cleanup,
 )
 from .policy_enforcement import normalize_options, validate_request
@@ -94,6 +95,7 @@ class _PreparedRequest:
     chunking_export_options: ChunkingExportOptions = field(
         default_factory=ChunkingExportOptions
     )
+    target_document_version: Optional[str] = None
 
 
 class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer):
@@ -217,6 +219,11 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
         options = self._enforce_policy(sources, options, target, callbacks=callbacks)
         try:
             caption_placement = caption_placement_from_options(options_proto)
+            target_document_version = validate_target_document_version(
+                body.target_document_version
+                if body.HasField("target_document_version")
+                else None
+            )
         except ValueError as exc:
             raise RequestRejected(str(exc)) from exc
         return _PreparedRequest(
@@ -226,6 +233,7 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
             callbacks=callbacks,
             requested_formats=requested_formats,
             caption_placement=caption_placement,
+            target_document_version=target_document_version,
         )
 
     def build_chunk(self, body, *, hybrid: bool) -> _PreparedRequest:
@@ -304,6 +312,8 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
         if task_type == TaskType.CHUNK:
             kwargs["chunking_options"] = prepared.chunking_options
             kwargs["chunking_export_options"] = prepared.chunking_export_options
+        if prepared.target_document_version:
+            kwargs["target_document_version"] = prepared.target_document_version
         return await self._orchestrator.enqueue(**kwargs)
 
     async def _wait_task_complete(self, task_id: str) -> bool:
@@ -404,6 +414,7 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
         requested_formats: set[OutputFormat],
         context: grpc.aio.ServicerContext,
         caption_placement=None,
+        target_document_version: Optional[str] = None,
     ) -> bool:
         """Populate the convert result oneof; False after aborting on a bad arm."""
         if isinstance(outcome, StoredFailureOutcome):
@@ -411,7 +422,11 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
             return True
         try:
             set_convert_result(
-                message, outcome, requested_formats, caption_placement=caption_placement
+                message,
+                outcome,
+                requested_formats,
+                caption_placement=caption_placement,
+                target_document_version=target_document_version,
             )
         except UnexpectedResultType as exc:
             await self._abort(context, grpc.StatusCode.FAILED_PRECONDITION, str(exc))
@@ -512,6 +527,7 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
             prepared.requested_formats,
             context,
             caption_placement=prepared.caption_placement,
+            target_document_version=prepared.target_document_version,
         ):
             return response
         with_single_use_cleanup(self._orchestrator, task_id)
@@ -548,6 +564,11 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
         empty = docling_serve_pb2.ConvertSourceBatchResponse()
         try:
             batch = to_batch_convert_request(request.request)
+            target_document_version = validate_target_document_version(
+                request.request.target_document_version
+                if request.request.HasField("target_document_version")
+                else None
+            )
         except ValueError as exc:
             await self._abort(context, grpc.StatusCode.INVALID_ARGUMENT, str(exc))
             return empty
@@ -592,13 +613,16 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
             await self._abort(context, grpc.StatusCode.INVALID_ARGUMENT, str(exc))
             return empty
 
-        task = await self._orchestrator.enqueue(
-            task_type=TaskType.CONVERT,
-            sources=sources,
-            convert_options=batch.options,
-            targets=targets,
-            callbacks=batch.callbacks,
-        )
+        enqueue_kwargs: dict = {
+            "task_type": TaskType.CONVERT,
+            "sources": sources,
+            "convert_options": batch.options,
+            "targets": targets,
+            "callbacks": batch.callbacks,
+        }
+        if target_document_version:
+            enqueue_kwargs["target_document_version"] = target_document_version
+        task = await self._orchestrator.enqueue(**enqueue_kwargs)
         position = await self._orchestrator.get_queue_position(task_id=task.task_id)
         self._requested_formats[task.task_id] = requested_output_formats(options_proto)
         if caption_placement is not None:
@@ -735,12 +759,20 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
             return response
         requested_formats = self._requested_formats.pop(task_id, set())
         caption_placement = self._caption_placements.pop(task_id, None)
+        target_document_version = None
+        try:
+            task = await self._orchestrator.task_status(task_id=task_id)
+        except TaskNotFoundError:
+            task = None
+        if task is not None:
+            target_document_version = getattr(task, "target_document_version", None)
         if not await self._fill_convert_result(
             response,
             outcome,
             requested_formats,
             context,
             caption_placement=caption_placement,
+            target_document_version=target_document_version,
         ):
             return response
         with_single_use_cleanup(self._orchestrator, task_id)

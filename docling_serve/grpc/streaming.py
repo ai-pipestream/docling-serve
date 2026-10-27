@@ -106,6 +106,7 @@ class DoclingStreamingGrpcService(
         requested_formats,
         request_id: str | None,
         next_seq: Callable[[], int],
+        target_document_version: str | None = None,
     ) -> Iterator[docling_serve_stream_pb2.StreamDocumentResponse]:
         """Yield the per-result payload envelopes for a successful task.
 
@@ -115,7 +116,11 @@ class DoclingStreamingGrpcService(
         GetConvertResult); zip / remote targets carry no in-band payload.
         """
         if isinstance(result, DocumentResultItem):
-            doc_proto = document_response_to_proto(result.document, requested_formats)
+            doc_proto = document_response_to_proto(
+                result.document,
+                requested_formats,
+                target_document_version=target_document_version,
+            )
             has_doc = doc_proto.HasField("doc")
             yield self._envelope(
                 request_id=request_id,
@@ -304,7 +309,11 @@ class DoclingStreamingGrpcService(
 
         try:
             for envelope in self._result_envelopes(
-                outcome.result, prepared.requested_formats, request_id, next_seq
+                outcome.result,
+                prepared.requested_formats,
+                request_id,
+                next_seq,
+                prepared.target_document_version,
             ):
                 yield envelope
         except UnexpectedResultType as exc:

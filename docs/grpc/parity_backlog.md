@@ -9,6 +9,49 @@ Living checklist for the scheduled parity duty. Update when a sync arrives.
 - Always-on rule: `/work/.cursor/rules/docling-parity-duty.mdc`
 - gRParse note: `AGENTS.md` → Recurring parity duty
 
+## Status 2026-10-26 (serve 1.38.1 + slim 2.142.1, jobkit 3.9.1)
+
+Synced docling-serve `v1.38.1` and upstream `4b0bd7b` (`#744`) onto `feat/docling-2.140-confidence-pages`. Package version is **1.38.1**. Jobkit floor is `>=3.9.1,<4`. Lock pins **docling-slim 2.142.1** (PyPI 2.143.0 was not taken) and **docling-jobkit 3.9.1**. Settings from the merge, no proto tags: `eng_rq_redis_health_check_interval` 30s, `eng_ray_task_metadata_ttl` 7 days, `eng_ray_tenant_metrics_refresh_interval` 30s.
+
+Sweep correction: `serve_main_unreleased=1`. That commit is `4b0bd7b` (`#744`, max sources on the chunk endpoints). It adds no proto tag. gRPC already enforced the cap.
+
+| Field | Message | Tag |
+| --- | --- | --- |
+| `target_document_version` | `ConvertDocumentRequest` | 5 |
+| `target_document_version` | `BatchConvertDocumentRequest` | 6 |
+| `RESPONSE_FORMAT_DOCLANG` | `ResponseFormat` | 6 |
+| `RESPONSE_FORMAT_DEEPSEEKOCR_MARKDOWN` | `ResponseFormat` | 7 |
+| `RESPONSE_FORMAT_UNLIMITED_OCR_MARKDOWN` | `ResponseFormat` | 8 |
+| `RESPONSE_FORMAT_CHANDRA_HTML` | `ResponseFormat` | 9 |
+| `RESPONSE_FORMAT_DOTS_JSON` | `ResponseFormat` | 10 |
+| `RESPONSE_FORMAT_NEMOTRON_PARSE_V2` | `ResponseFormat` | 11 |
+| `RESPONSE_FORMAT_NEMOTRON_PARSE_V3_5` | `ResponseFormat` | 12 |
+| `RESPONSE_FORMAT_MINERU2` | `ResponseFormat` | 13 |
+| `response_format_raw` | `VlmModelLocal` | 9 |
+| `response_format_raw` | `VlmModelApi` | 10 |
+| `response_format_raw` | `VlmModelSpec` | 14 |
+| `trust_remote_code` | `BaseVlmEngineOptions` | 2 |
+
+`VlmModelSpec.trust_remote_code` stays at tag 9. `target_document_version` uses `^\d{1,9}\.\d{1,9}\.\d{1,9}$` and rejects versions older than `1.{FIRST_SUPPORTED_MINOR}.0`. JSON exports and JSON target files are projected. The typed `DoclingDocument` stays on the current schema. Chunk RPCs do not carry the field.
+
+Pending: `ZipArchiveResult.filename` (tag 2). It is on docling main only, not in 2.142.1. Do not add it until a release contains it.
+
+The editable `docling-core` sibling used at lock time is a local merge of fork `feat/add-protobuf` with upstream `v2.104.0` (slim 2.142.1 requires `docling-core>=2.103.1`). Published `feat/add-protobuf` is still `a7da172` (2.101.1). Core sync is a separate task. That sibling was not pushed.
+
+### gRParse
+
+Matching proto changes are being done in gRParse separately: `ResponseFormat` members, `response_format_raw`, `BaseVlmEngineOptions.trust_remote_code`, `extract_form_fields`, and the new `StructureRule` values.
+
+Skips recorded for gRParse this cycle:
+
+| Item | Why it stays out of gRParse |
+| --- | --- |
+| JSON down-projection | gRParse's source of truth is the typed document. A JSON projector would reintroduce a versioned JSON dialect it does not own. |
+| Pillow mode `I` | gRParse does not use Pillow. Page rasters are PNG from the CV path. |
+| RQ health interval, Ray metadata TTL, Ray tenant metrics refresh | gRParse has no RQ or Ray. |
+| Transformers ASR families | `asr_service.proto` is whisper.cpp. A model-family enum would advertise engines the process cannot load. |
+| EPUB image default | Already on. `include_images = 5` defaults images on and emits image resources. |
+
 ## Status 2026-10-19 (core 2.103.0 + serve 1.37.0, slim 2.140.0)
 
 | Track | State |
