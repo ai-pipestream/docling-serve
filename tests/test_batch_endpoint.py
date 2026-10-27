@@ -526,9 +526,17 @@ async def test_batch_endpoint_resolves_plugin_source_and_target(
     assert batch_schema["sources"]["items"]["discriminator"]["mapping"][
         "filenet"
     ].endswith("/TaskFileNetSource")
-    assert batch_schema["target"]["discriminator"]["mapping"][
-        "plugin_artifact"
-    ].endswith("/PluginArtifactTarget")
+    target_schema = batch_schema["target"]
+    target_discriminator = target_schema.get("discriminator")
+    if target_discriminator is None:
+        for option in target_schema.get("anyOf", []):
+            if "discriminator" in option:
+                target_discriminator = option["discriminator"]
+                break
+    assert target_discriminator is not None
+    assert target_discriminator["mapping"]["plugin_artifact"].endswith(
+        "/PluginArtifactTarget"
+    )
     api_key_schema = schemas["TaskFileNetSource"]["properties"]["api_key"]
     assert api_key_schema["format"] == "password"
     assert api_key_schema["writeOnly"] is True
