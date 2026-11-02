@@ -2252,7 +2252,7 @@ wheels = [
 
 [[package]]
 name = "docling-serve"
-version = "1.38.1"
+version = "1.38.2"
 source = { editable = "." }
 default-groups = ["dev", "pypi"]
 dependencies = [
@@ -2385,7 +2385,7 @@ requires-dist = [
     { name = "opentelemetry-api", specifier = ">=1.36.0,<2.0.0" },
     { name = "opentelemetry-exporter-otlp", specifier = ">=1.15.0" },
     { name = "opentelemetry-exporter-prometheus", specifier = ">=0.57b0" },
-    { name = "opentelemetry-instrumentation-fastapi", specifier = ">=0.57b0,<0.58" },
+    { name = "opentelemetry-instrumentation-fastapi", specifier = ">=0.57b0,<1.0.0" },
     { name = "opentelemetry-sdk", specifier = ">=1.36.0,<2.0.0" },
     { name = "prometheus-client", specifier = ">=0.21.0" },
     { name = "protobuf", specifier = ">=7.35.1" },
@@ -2397,7 +2397,7 @@ requires-dist = [
     { name = "tesserocr", marker = "extra == 'tesserocr'", specifier = "~=2.7" },
     { name = "typer", specifier = "~=0.12" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.29.0,<1.0.0" },
-    { name = "websockets", specifier = ">=14.0,<17.0" },
+    { name = "websockets", specifier = ">=14.0,<18.0" },
 ]
 provides-extras = ["ui", "tesserocr", "easyocr", "rapidocr", "flash-attn"]
 
@@ -2431,14 +2431,14 @@ dev = [
     { name = "docling-jobkit", specifier = ">=1.10.1" },
     { name = "grpcio-tools", specifier = ">=1.80.0" },
     { name = "httpx" },
-    { name = "numpy", specifier = "<2.5.0" },
+    { name = "numpy", specifier = "<3.0.0" },
     { name = "prek", specifier = ">=0.3.10" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "pypdf", specifier = ">=6.0.0" },
     { name = "pytest", specifier = ">=8.3,<10.0.0" },
     { name = "pytest-asyncio", specifier = "~=1.2" },
-    { name = "pytest-check", specifier = "~=2.8" },
+    { name = "pytest-check", specifier = ">=2.8,<4.0.0" },
     { name = "python-semantic-release", specifier = "~=7.32" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "ruff", specifier = "==0.16.10" },
@@ -2473,7 +2473,7 @@ typecheck = [
 
 [[package]]
 name = "docling-slim"
-version = "2.142.1"
+version = "2.145.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
@@ -2486,9 +2486,9 @@ dependencies = [
     { name = "requests" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/1f/43/fa84e245dd80d8c48912f0495c3a31a333fb3804efb0295646f5f052e748/docling_slim-2.142.1.tar.gz", hash = "sha256:b6042f9b6c8f156f04d59a298188b33aa8f6317ca57073225453056c164af0f4", size = 922507, upload-time = "2026-10-23T08:20:49.57Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/56/5c/c5d2acb0a447ddd92df072425a37d8f2ed96ae0e947092f70ca0a4ad9511/docling_slim-2.145.0.tar.gz", hash = "sha256:252e09be828cc3ed246ce831af26b0a64a481db16c582d5f520141274c6c5a14", size = 948880, upload-time = "2026-10-29T14:42:27.299Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c7/5f/6ca181855e1cad1d9e8be1830fa660cf481bbb5e5da6caa21df491181e71/docling_slim-2.142.1-py3-none-any.whl", hash = "sha256:8013da3da0692b51406e6192c3b2aba4c241da92ff055af106dbe6b723b7f528", size = 1116839, upload-time = "2026-10-23T08:20:47.142Z" },
+    { url = "https://files.pythonhosted.org/packages/4e/9f/6a56e93da350beb78781689c6ea407c55253d131365c017e13416da26fd4/docling_slim-2.145.0-py3-none-any.whl", hash = "sha256:789d93be17066ddfc9b451681bdb87ab206593a597ad93aa7bd4d5dca27092d8", size = 1145206, upload-time = "2026-10-29T14:42:25.327Z" },
 ]
 
 [package.optional-dependencies]
