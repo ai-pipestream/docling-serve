@@ -281,3 +281,27 @@ upstream so the VLM extras resolve.
 | `allow_image_file_uri` gate on every local image read, `DoclingDocument.load_local_images()`, `allow_local_images` on `load_from_json`/`load_from_yaml` (core #900) | method / settings | core | No wire change. `ImageRef.uri` is a string and the converter never opens it; docling-core tests prove both directions leave `_pil` unset. |
 | `_count_column_header_rows` header-row rule, `TableData.remove_rows` dedupe, contextualized table chunk token limits, `LineBasedTokenChunker` prefix handling (core #823, #834, #690) | behavioural | core | No document field. |
 | `ApiAsrOptions` (remote OpenAI-compatible transcription), `ThreadedDoclingParseBackendOptions.max_concurrent_results`, `VlmStopReason` and `VlmPrediction.stop_reason` / `error_message` (slim 2.139/2.140) | additive (engine) | engine | Not on any docling-serve request or response model, so no serve wire. Tracked for gRParse and grpc-asr in `parity_backlog.md`. |
+
+## 2026-10-26: core 2.104.0 pin, serve 1.38.1, slim 2.142.1, jobkit 3.9.1
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| `target_document_version` on the convert request (Accept-Docling-Document-Version) | additive | serve | `ConvertDocumentRequest.target_document_version = 5`, `BatchConvertDocumentRequest.target_document_version = 6`. Pattern `^\d{1,9}\.\d{1,9}\.\d{1,9}$`. JSON exports and JSON target files are projected. The typed `DoclingDocument` stays on the current schema. |
+| `ResponseFormat` members through `MINERU2` | additive | engine | Tags 6 through 13: `DOCLANG`, `DEEPSEEKOCR_MARKDOWN`, `UNLIMITED_OCR_MARKDOWN`, `CHANDRA_HTML`, `DOTS_JSON`, `NEMOTRON_PARSE_V2`, `NEMOTRON_PARSE_V3_5`, `MINERU2`. |
+| `response_format_raw` | additive | engine | `VlmModelLocal = 9`, `VlmModelApi = 10`, `VlmModelSpec = 14`. Unknown values survive. |
+| `BaseVlmEngineOptions.trust_remote_code` | additive | engine | Tag 2. `VlmModelSpec.trust_remote_code` stays at tag 9. |
+| docling-core pin `099ccf93820aff5c02cd1877269a364bdc7c4a9b` (2.104.0) | pin | core | No new serve document tags in this cycle. Moved to `005037bb` in the next entry. |
+
+## 2026-11-02: serve 1.38.2, slim 2.145.0, core pin 2.105.0, jobkit 3.9.1
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| docling-serve `v1.38.2` (`#746` dependency ranges) | dependency | serve | No new request field from the release itself. Package version is 1.38.2. `websockets<18`, OpenTelemetry instrumentation `<1.0.0`. |
+| docling-core pin `005037bb9e1af28971204c813e1d7b90be8e70eb` (2.105.0), branch `ai-pipestream/sync-upstream-2026-10-26-8ae9` | pin | core | Replaces `099ccf9` (2.104.0). Git rev only. No path source. Document proto remains the import from that package. |
+| docling-slim 2.145.0; jobkit stays 3.9.1 | lock | engine / jobkit | No jobkit tag after v3.9.1. |
+| `ZipArchiveResult.filename: Optional[str] = None` | additive | serve response | `optional string filename = 2`. Copied only when `filename` is in `model_fields_set` and the value is not `None`. `""` is set. `None` stays unset. |
+| Typed OCR options on slim 2.145 (`OcrMode`, per-engine classes, `detect_orientation`, KServe mixin) | additive | engine, exposed on serve | `ConvertDocumentOptions.ocr_options` oneof, tags 54-61: `ocr_auto`, `easyocr`, `tesseract` (kind `tesserocr`), `tesseract_cli` (kind `tesseract`), `rapidocr`, `ocrmac`, `nemotron_ocr`, `kserve_v2_ocr`. Messages mirror the Pydantic classes, including `OcrOptionsBase` and `KserveV2OptionsMixin`. `OcrLang` wraps `lang` so `[]` stays distinct from omitted. Closed literals are enums plus `*_raw`. `rapidocr_params` and `request_parameters` are `map<string, ScalarValue>`. `grpc_channel_args` is `repeated KserveGrpcChannelArg`. |
+| `ocr_custom_config` remains `dict[str, Any]` on the request model | unchanged field, new precedence | serve | Field 39 stays. With the oneof set, the arm owns known keys and a repeated key is an error. Untyped keys merge. Without the oneof, the map is still the whole custom config, including `kind`. |
+| `force_full_page_ocr` deprecated alias of `mode == FULL_PAGE` | alias | engine | `OcrOptionsBase.force_full_page_ocr = 6`, optional bool. Not in `model_fields`. Both `mode` and this flag set is an error. |
+| `bitmap_area_threshold` removed from `OcrOptions` | removal | engine | Not a typed field. An unknown key can still ride `ocr_custom_config`. |
+| ASR option models and `GenerationStopper.is_valid_end` | not on the serve request | engine | No wire field. Recorded in `parity_backlog.md`. |

@@ -44,25 +44,29 @@ def _build_ray_orchestrator(
         max_page_slice_parallelism,
     )
 
-    with (
-        patch(
-            "docling_jobkit.convert.manager.DoclingConverterManagerConfig",
-            _CapturedConverterManagerConfig,
-        ),
-        patch(
-            "docling_jobkit.convert.manager.DoclingConverterManager",
-            _FakeConverterManager,
-        ),
-        patch(
-            "docling_jobkit.orchestrators.ray.config.RayOrchestratorConfig",
-            _CapturedConfig,
-        ),
-        patch(
-            "docling_jobkit.orchestrators.ray.orchestrator.RayOrchestrator",
-            _FakeRayOrchestrator,
-        ),
-    ):
-        return factory_module.get_async_orchestrator()
+    try:
+        with (
+            patch(
+                "docling_jobkit.convert.manager.DoclingConverterManagerConfig",
+                _CapturedConverterManagerConfig,
+            ),
+            patch(
+                "docling_jobkit.convert.manager.DoclingConverterManager",
+                _FakeConverterManager,
+            ),
+            patch(
+                "docling_jobkit.orchestrators.ray.config.RayOrchestratorConfig",
+                _CapturedConfig,
+            ),
+            patch(
+                "docling_jobkit.orchestrators.ray.orchestrator.RayOrchestrator",
+                _FakeRayOrchestrator,
+            ),
+        ):
+            return factory_module.get_async_orchestrator()
+    finally:
+        # The builder caches a fake. Leave the process cache empty for later apps.
+        factory_module.get_async_orchestrator.cache_clear()
 
 
 def test_slice_parallelism_defaults_to_max_concurrent_tasks(monkeypatch):
@@ -167,25 +171,28 @@ def test_ray_config_passes_presigned_storage_when_enabled(monkeypatch):
         900,
     )
 
-    with (
-        patch(
-            "docling_jobkit.convert.manager.DoclingConverterManagerConfig",
-            _CapturedConverterManagerConfig,
-        ),
-        patch(
-            "docling_jobkit.convert.manager.DoclingConverterManager",
-            _FakeConverterManager,
-        ),
-        patch(
-            "docling_jobkit.orchestrators.ray.config.RayOrchestratorConfig",
-            _CapturedConfig,
-        ),
-        patch(
-            "docling_jobkit.orchestrators.ray.orchestrator.RayOrchestrator",
-            _FakeRayOrchestrator,
-        ),
-    ):
-        orchestrator = factory_module.get_async_orchestrator()
+    try:
+        with (
+            patch(
+                "docling_jobkit.convert.manager.DoclingConverterManagerConfig",
+                _CapturedConverterManagerConfig,
+            ),
+            patch(
+                "docling_jobkit.convert.manager.DoclingConverterManager",
+                _FakeConverterManager,
+            ),
+            patch(
+                "docling_jobkit.orchestrators.ray.config.RayOrchestratorConfig",
+                _CapturedConfig,
+            ),
+            patch(
+                "docling_jobkit.orchestrators.ray.orchestrator.RayOrchestrator",
+                _FakeRayOrchestrator,
+            ),
+        ):
+            orchestrator = factory_module.get_async_orchestrator()
+    finally:
+        factory_module.get_async_orchestrator.cache_clear()
 
     config = orchestrator.config.presigned_config
     assert config is not None
