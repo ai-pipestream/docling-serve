@@ -2085,8 +2085,8 @@ wheels = [
 
 [[package]]
 name = "docling-core"
-version = "2.104.0"
-source = { git = "https://github.com/ai-pipestream/docling-core?rev=099ccf93820aff5c02cd1877269a364bdc7c4a9b#099ccf93820aff5c02cd1877269a364bdc7c4a9b" }
+version = "2.105.0"
+source = { git = "https://github.com/ai-pipestream/docling-core?rev=005037bb9e1af28971204c813e1d7b90be8e70eb#005037bb9e1af28971204c813e1d7b90be8e70eb" }
 dependencies = [
     { name = "defusedxml" },
     { name = "doclang" },
@@ -2371,7 +2371,7 @@ typecheck = [
 
 [package.metadata]
 requires-dist = [
-    { name = "docling-core", git = "https://github.com/ai-pipestream/docling-core?rev=099ccf93820aff5c02cd1877269a364bdc7c4a9b" },
+    { name = "docling-core", git = "https://github.com/ai-pipestream/docling-core?rev=005037bb9e1af28971204c813e1d7b90be8e70eb" },
     { name = "docling-jobkit", extras = ["rq", "ray", "vlm", "azure", "gcloudstorage", "gdrive"], specifier = ">=3.9.1,<4" },
     { name = "docling-mcp", specifier = ">=1.0.0" },
     { name = "docling-slim", extras = ["standard", "service-client", "models-remote", "format-opendocument"], specifier = ">=2.140.0,<3.0.0" },
