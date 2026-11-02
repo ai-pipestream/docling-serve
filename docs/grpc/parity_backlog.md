@@ -9,6 +9,61 @@ Living checklist for the scheduled parity duty. Update when a sync arrives.
 - Always-on rule: `/work/.cursor/rules/docling-parity-duty.mdc`
 - gRParse note: `AGENTS.md` → Recurring parity duty
 
+## Status 2026-11-02 (serve 1.38.2 + slim 2.145.0, core 2.105.0, jobkit 3.9.1)
+
+Merged upstream docling-serve `v1.38.2` (`9c058db`, `#746` dependency ranges). Package version is **1.38.2**. Lock pins **docling-slim 2.145.0** and **docling-jobkit 3.9.1**. There is no jobkit tag after v3.9.1, so later jobkit commits stay out of this lock.
+
+docling-core is pinned to git rev `005037bb9e1af28971204c813e1d7b90be8e70eb` (**2.105.0**) from `https://github.com/ai-pipestream/docling-core`, branch `ai-pipestream/sync-upstream-2026-10-26-8ae9`. That replaces `099ccf93820aff5c02cd1877269a364bdc7c4a9b` (2.104.0). Slim 2.145 requires `docling-core>=2.103.1,<3`. The lock source is that git rev. There is no path dependency. This serve change does not re-port docling-core document behavior. The document proto stays the one imported from that pin.
+
+| Field | Message | Tag |
+| --- | --- | --- |
+| `filename` | `ZipArchiveResult` | 2 |
+| `ocr_auto` | `ConvertDocumentOptions.ocr_options` | 54 |
+| `easyocr` | `ConvertDocumentOptions.ocr_options` | 55 |
+| `tesseract` (factory kind `tesserocr`) | `ConvertDocumentOptions.ocr_options` | 56 |
+| `tesseract_cli` (factory kind `tesseract`) | `ConvertDocumentOptions.ocr_options` | 57 |
+| `rapidocr` | `ConvertDocumentOptions.ocr_options` | 58 |
+| `ocrmac` | `ConvertDocumentOptions.ocr_options` | 59 |
+| `nemotron_ocr` (factory kind `nemotron-ocr`) | `ConvertDocumentOptions.ocr_options` | 60 |
+| `kserve_v2_ocr` | `ConvertDocumentOptions.ocr_options` | 61 |
+
+New messages: `OcrLang`, `KserveGrpcChannelArg`, `OcrOptionsBase`, `OcrAutoOptions`, `EasyOcrOptions`, `TesseractOcrOptions`, `TesseractCliOcrOptions`, `RapidOcrOptions`, `OcrMacOptions`, `NemotronOcrOptions`, `KserveV2OcrOptions`.
+
+New enums: `OcrMode`, `RapidOcrBackend`, `RapidOcrModelSize`, `NemotronOcrMergeLevel`, `KserveV2Transport`. Closed literals keep a `*_raw` companion (`mode_raw`, `backend_raw`, `model_size_raw`, `merge_level_raw`, `transport_raw`).
+
+`ocr_custom_config` stays field 39. When `ocr_options` is set, the arm owns every field of that message. The map may only add keys the message does not define. A repeated key is an error. A non-auto `ocr_preset`, or an `ocr_engine` string that is not the arm's factory kind, is an error. `ocr_lang` fills `lang` only when the arm left `lang` unset. Unset optional fields are omitted, so the engine class default stays. Explicit false is written as false. An empty `OcrLang.values` is an empty language list. An omitted `lang` leaves the class default. `kind` is the oneof arm, not a field. Factory kinds: `auto`, `easyocr`, `tesserocr`, `tesseract`, `rapidocr`, `ocrmac`, `nemotron-ocr`, `kserve_v2_ocr`.
+
+`force_full_page_ocr` is `optional bool` tag 6 on `OcrOptionsBase`. It is the deprecated computed alias of `mode = FULL_PAGE`, not a stored Pydantic field. The schema walker treats it as proto-only. Setting both `mode` and `force_full_page_ocr` is an error.
+
+`bitmap_area_threshold` was removed from `OcrOptions` in slim 2.145. It is not a typed field. A key the selected message does not define can still travel in `ocr_custom_config`.
+
+`ZipArchiveResult.filename` is copied only when the caller set it. `None` stays unset. `""` is a real name.
+
+The schema walker discovers `OcrOptions.__subclasses__()` and flattens `OcrOptionsBase` through each engine message's `base` field. A field slim adds later, or a new subclass with no message, fails `test_serve_types_no_pydantic_fields_missing_on_proto`.
+
+### Skipped on the serve wire
+
+| Item | Why it stays out |
+| --- | --- |
+| ASR option models (`InlineAsrTransformersOptions`, MLX fields, new `AsrModelType`) | Not fields of `ConvertDocumentsOptions`. |
+| `GenerationStopper.is_valid_end` | A method, not a request field. |
+| jobkit commits after v3.9.1 | No release tag after v3.9.1. |
+| docling-core 2.105.0 document edits | The pin moves. Document fields stay on the imported core proto. This PR does not edit them. |
+
+### gRParse
+
+This PR does not change gRParse. Serve now has `ZipArchiveResult.filename` and the typed OCR oneof. Porting those is separate work.
+
+Skips recorded for gRParse this cycle:
+
+| Item | Why it stays out of gRParse |
+| --- | --- |
+| `ZipArchiveResult.filename` | Not ported in this serve PR. gRParse does not return this zip result model. |
+| Typed OCR oneof | Not ported in this serve PR. |
+| ASR option families | `asr_service.proto` is whisper.cpp. Those slim option models are not engines that process loads. |
+| `GenerationStopper.is_valid_end` | A method, not a request field. |
+| RQ settings from serve 1.38.x | gRParse has no RQ. |
+
 ## Status 2026-10-26 (serve 1.38.1 + slim 2.142.1, jobkit 3.9.1)
 
 Synced docling-serve `v1.38.1` and upstream `4b0bd7b` (`#744`) onto `feat/docling-2.140-confidence-pages`. Package version is **1.38.1**. Jobkit floor is `>=3.9.1,<4`. Lock pins **docling-slim 2.142.1** (PyPI 2.143.0 was not taken) and **docling-jobkit 3.9.1**. Settings from the merge, no proto tags: `eng_rq_redis_health_check_interval` 30s, `eng_ray_task_metadata_ttl` 7 days, `eng_ray_tenant_metrics_refresh_interval` 30s.
@@ -34,9 +89,9 @@ Sweep correction: `serve_main_unreleased=1`. That commit is `4b0bd7b` (`#744`, m
 
 `VlmModelSpec.trust_remote_code` stays at tag 9. `target_document_version` uses `^\d{1,9}\.\d{1,9}\.\d{1,9}$` and rejects versions older than `1.{FIRST_SUPPORTED_MINOR}.0`. JSON exports and JSON target files are projected. The typed `DoclingDocument` stays on the current schema. Chunk RPCs do not carry the field.
 
-Pending: `ZipArchiveResult.filename` (tag 2). It is on docling main only, not in 2.142.1. Do not add it until a release contains it.
+`ZipArchiveResult.filename` was on docling main only in this cycle, not in slim 2.142.1, so it stayed off the wire. Slim 2.145.0 shipped it. The 2026-11-02 cycle adds tag 2.
 
-The lock pins docling-core **2.104.0** from `https://github.com/ai-pipestream/docling-core` at `099ccf93820aff5c02cd1877269a364bdc7c4a9b` (branch `ai-pipestream/sync-upstream-2026-10-26-8ae9`). Slim 2.142.1 requires `docling-core>=2.103.1`. Published `feat/add-protobuf` is still `a7da172` (2.101.1).
+This cycle's lock pinned docling-core **2.104.0** from `https://github.com/ai-pipestream/docling-core` at `099ccf93820aff5c02cd1877269a364bdc7c4a9b` (branch `ai-pipestream/sync-upstream-2026-10-26-8ae9`). Slim 2.142.1 requires `docling-core>=2.103.1`. The 2026-11-02 cycle moves that pin to `005037bb9e1af28971204c813e1d7b90be8e70eb` (2.105.0) on the same branch. Published `feat/add-protobuf` was still `a7da172` (2.101.1) on 2026-10-26.
 
 ### gRParse
 

@@ -108,6 +108,7 @@ from docling_serve.settings import docling_serve_settings
 
 from .docling_document_converter import docling_document_to_proto
 from .gen.ai.docling.serve.v1 import docling_serve_types_pb2
+from .ocr_mapping import apply_typed_ocr_options
 
 _log = logging.getLogger(__name__)
 
@@ -1105,14 +1106,6 @@ def to_convert_options(
     if proto_options.HasField("force_ocr"):
         data["force_ocr"] = proto_options.force_ocr
 
-    if proto_options.HasField("ocr_engine"):
-        val = _map_ocr_engine(proto_options.ocr_engine)
-        if val is not None:
-            data["ocr_engine"] = val
-
-    if proto_options.ocr_lang:
-        data["ocr_lang"] = list(proto_options.ocr_lang)
-
     if proto_options.HasField("pdf_backend"):
         val = _map_pdf_backend(proto_options.pdf_backend)
         if val is not None:
@@ -1307,11 +1300,33 @@ def to_convert_options(
             proto_options.layout_custom_config
         )
 
-    if proto_options.HasField("ocr_preset"):
-        data["ocr_preset"] = proto_options.ocr_preset
-
-    if proto_options.ocr_custom_config:
-        data["ocr_custom_config"] = _scalar_map_to_dict(proto_options.ocr_custom_config)
+    ocr_engine = None
+    if proto_options.HasField("ocr_engine"):
+        ocr_engine = _map_ocr_engine(proto_options.ocr_engine)
+    ocr_preset = (
+        proto_options.ocr_preset if proto_options.HasField("ocr_preset") else None
+    )
+    ocr_custom = (
+        _scalar_map_to_dict(proto_options.ocr_custom_config)
+        if proto_options.ocr_custom_config
+        else {}
+    )
+    if not apply_typed_ocr_options(
+        proto_options,
+        data,
+        ocr_custom,
+        ocr_engine=ocr_engine,
+        ocr_lang=list(proto_options.ocr_lang),
+        ocr_preset=ocr_preset,
+    ):
+        if ocr_engine is not None:
+            data["ocr_engine"] = ocr_engine
+        if proto_options.ocr_lang:
+            data["ocr_lang"] = list(proto_options.ocr_lang)
+        if ocr_preset is not None:
+            data["ocr_preset"] = ocr_preset
+        if ocr_custom:
+            data["ocr_custom_config"] = ocr_custom
 
     if proto_options.HasField("table_structure_preset"):
         data["table_structure_preset"] = proto_options.table_structure_preset
@@ -1914,7 +1929,11 @@ def convert_result_to_proto(
 def zip_result_to_proto(
     result: ZipArchiveResult,
 ) -> docling_serve_types_pb2.ZipArchiveResult:
-    return docling_serve_types_pb2.ZipArchiveResult(content=result.content)
+    message = docling_serve_types_pb2.ZipArchiveResult(content=result.content)
+    # Copy only a filename the caller set. None stays unset. "" is a real name.
+    if "filename" in result.model_fields_set and result.filename is not None:
+        message.filename = result.filename
+    return message
 
 
 def remote_target_result_to_proto(

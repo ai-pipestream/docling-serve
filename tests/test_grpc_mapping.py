@@ -54,6 +54,7 @@ from docling_serve.grpc.mapping import (
     to_hybrid_chunk_options,
     to_task_sources,
     to_task_target,
+    zip_result_to_proto,
 )
 
 pytestmark = pytest.mark.unit
@@ -173,16 +174,14 @@ def test_enum_mappings():
         == InputFormat.EBCDIC
     )
     assert (
-        _map_input_format(docling_serve_types_pb2.INPUT_FORMAT_RTF)
-        == InputFormat.RTF
+        _map_input_format(docling_serve_types_pb2.INPUT_FORMAT_RTF) == InputFormat.RTF
     )
     assert (
         _map_input_format(docling_serve_types_pb2.INPUT_FORMAT_MHTML)
         == InputFormat.MHTML
     )
     assert (
-        _map_input_format(docling_serve_types_pb2.INPUT_FORMAT_AFP)
-        == InputFormat.AFP
+        _map_input_format(docling_serve_types_pb2.INPUT_FORMAT_AFP) == InputFormat.AFP
     )
     assert (
         _map_input_format(docling_serve_types_pb2.INPUT_FORMAT_IWORK_KEYNOTE)
@@ -2061,7 +2060,6 @@ def test_caption_placement_reexports_markdown_and_rejects_unspecified():
     )
 
 
-
 def test_iwork_numbers_maps_for_slim_2138():
     assert (
         _map_input_format(docling_serve_types_pb2.INPUT_FORMAT_IWORK_NUMBERS)
@@ -2167,3 +2165,32 @@ def test_s3_verify_ssl_explicit_false_is_honoured():
     )
     assert isinstance(target, S3Target)
     assert target.verify_ssl is False
+
+
+def test_zip_filename_unset_stays_unset():
+    from docling.datamodel.service.responses import ZipArchiveResult
+
+    proto = zip_result_to_proto(ZipArchiveResult(content=b"PK\x03\x04"))
+    assert proto.content == b"PK\x03\x04"
+    assert not proto.HasField("filename")
+
+
+def test_zip_filename_set_and_empty_string():
+    from docling.datamodel.service.responses import ZipArchiveResult
+
+    named = zip_result_to_proto(
+        ZipArchiveResult(content=b"PK", filename="converted_docs.zip")
+    )
+    assert named.HasField("filename")
+    assert named.filename == "converted_docs.zip"
+
+    empty = zip_result_to_proto(ZipArchiveResult(content=b"PK", filename=""))
+    assert empty.HasField("filename")
+    assert empty.filename == ""
+
+
+def test_zip_filename_explicit_none_stays_unset():
+    from docling.datamodel.service.responses import ZipArchiveResult
+
+    proto = zip_result_to_proto(ZipArchiveResult(content=b"PK", filename=None))
+    assert not proto.HasField("filename")
