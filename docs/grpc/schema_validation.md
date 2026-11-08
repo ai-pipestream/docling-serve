@@ -132,6 +132,10 @@ Current serve-side coercions:
 | Path | Pydantic | Proto | Why |
 |------|----------|-------|-----|
 | `ocr_engine` | `str` | `OcrEngine` enum (+ presets) | REST keeps the engine id open; gRPC closes it with a raw fallback. |
+| `**.lang` on OCR messages | `list<string>` | `message:OcrLang` | Presence wrapper so `[]` stays distinct from omitted. |
+| `RapidOcrOptions.backend`, `.model_size`, `NemotronOcrOptions.merge_level`, `KserveV2OcrOptions.transport` | `string` (Literal) | optional enum + `*_raw` | Closed literals. |
+| `rapidocr_params`, `request_parameters` | `dict[str, Any]` | `map<string, ScalarValue>` | Open scalar bags on the typed OCR messages. |
+| `KserveV2OcrOptions.grpc_channel_args` | `list<tuple<string, Any>>` | `repeated KserveGrpcChannelArg` | Each value is a scalar. |
 | `headers` | `dict[str, Any]` | `map<string, string>` | HTTP headers are strings on the wire. |
 | `**.params`, `**.generation_config`, `**.extra_generation_config`, `**.extra_config`, `*_custom_config` (untyped ones) | `dict[str, Any]` | `map<string, ScalarValue>` | Open scalar bags; nesting is rejected by construction. |
 | typed `*_custom_config` | `Union[Model, dict]` | the `Model` message | gRPC exposes only the typed arm. |
@@ -314,6 +318,8 @@ Certain proto messages are treated as opaque leaf nodes — no recursive descent
   matched structurally via `_TUPLE_MESSAGE_EQUIVALENCES`.
 - **`ScalarValue`** — closed scalar oneof used for `dict[str, Any]` bags.
   Map values of this type are not descended either.
+- **`OcrLang`**, **`KserveGrpcChannelArg`** — compared as a whole through the
+  `**.lang` and `grpc_channel_args` coercions.
 - **`ConvertDocumentOptions`, `DocumentResponse` / `ExportDocumentResponse`**
   — validated as their own top-level pair (see §6).
 
@@ -337,15 +343,23 @@ the context so discriminator suppressions and scoped coercions resolve:
 - Progress callbacks: `ProgressSetNumDocs`, `ProcessedDocsItem`,
   `ProgressUpdateProcessed`, `DocumentCompletedItem`,
   `ProgressDocumentCompleted`, `ProgressTaskCompleted`.
+- Every concrete `OcrOptions` subclass, discovered with
+  `OcrOptions.__subclasses__()`. The proto message name is the class name.
+  A missing message is a hard mismatch. Inherited `OcrOptions` fields are
+  flattened through each engine message's `base` field. A new engine message
+  that embeds `OcrOptionsBase` is registered the same way at validation time.
 
 Pydantic `kind` discriminators on result / progress variants are absorbed by
-the parent oneof tag (`_PYDANTIC_ONLY_DISCRIMINATORS`). The only accepted
-proto-only fields are the `*_raw` fallbacks and `Generic{Source,Target}.attributes`:
-those models declare `extra="allow"`, so the validator treats a top-level
-`map<string, ScalarValue>` on the proto side as the wire form of the extras
-(`_SCALAR_EXTRAS_MAP`) and reports it as an allowed coercion rather than a
-proto-only field. `test_serve_types_no_pydantic_fields_missing_on_proto`
-enforces this.
+the parent oneof tag (`_PYDANTIC_ONLY_DISCRIMINATORS`). OCR `kind` is a
+`ClassVar` on the engine class, so it is not a `model_fields` entry. The
+accepted proto-only names include the `*_raw` fallbacks, `ocr_options` (the
+typed oneof; each arm is validated on its own), and `force_full_page_ocr`
+(the deprecated alias of `mode == FULL_PAGE`, not a stored field).
+`Generic{Source,Target}.attributes` models declare `extra="allow"`, so the
+validator treats a top-level `map<string, ScalarValue>` on the proto side as
+the wire form of the extras (`_SCALAR_EXTRAS_MAP`) and reports it as an
+allowed coercion rather than a proto-only field.
+`test_serve_types_no_pydantic_fields_missing_on_proto` enforces this.
 
 ---
 

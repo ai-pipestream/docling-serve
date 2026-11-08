@@ -16,6 +16,8 @@ Usage:
     uv run python scripts/buf_check.py --write  # also apply buf format -w
 """
 
+import json
+import os
 import pathlib
 import shutil
 import subprocess
@@ -24,6 +26,9 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 PROTO_DIR = ROOT / "proto"
+_PROTO_MARKER = (
+    pathlib.Path("ai") / "docling" / "core" / "v1" / "docling_document.proto"
+)
 
 BUF_YAML = """version: v2
 
@@ -36,19 +41,71 @@ lint:
 """
 
 
+def _valid_proto_dir(path: pathlib.Path) -> pathlib.Path | None:
+    if (path / _PROTO_MARKER).exists():
+        return path
+    return None
+
+
+def _installed_core_commit() -> str | None:
+    try:
+        import importlib.metadata
+    except ImportError:
+        return None
+    try:
+        dist = importlib.metadata.distribution("docling-core")
+    except importlib.metadata.PackageNotFoundError:
+        return None
+    raw = dist.read_text("direct_url.json")
+    if not raw:
+        return None
+    vcs = json.loads(raw).get("vcs_info") or {}
+    commit = vcs.get("commit_id")
+    return commit if isinstance(commit, str) and commit else None
+
+
+def _uv_cache_proto(commit: str) -> pathlib.Path | None:
+    """Proto sources from the git checkout uv used to build this pin.
+
+    The wheel ships generated stubs, not ``proto/``. After ``uv sync`` the
+    checkout is still in the uv cache, named by the first 7 hex digits.
+    """
+    roots: list[pathlib.Path] = []
+    if os.environ.get("UV_CACHE_DIR"):
+        roots.append(pathlib.Path(os.environ["UV_CACHE_DIR"]))
+    roots.append(pathlib.Path.home() / ".cache" / "uv")
+    names = {commit, commit[:7]}
+    for root in roots:
+        checkouts = root / "git-v1" / "checkouts"
+        if not checkouts.is_dir():
+            continue
+        for name in names:
+            for proto in checkouts.glob(f"*/{name}/proto"):
+                found = _valid_proto_dir(proto)
+                if found is not None:
+                    return found
+    return None
+
+
 def get_core_proto_dir() -> pathlib.Path:
     # Prefer proto dir from installed docling-core (e.g. when docling-core ships proto).
     try:
         import docling_core
 
         core_proto = pathlib.Path(docling_core.__file__).resolve().parent / "proto"
-        if (core_proto / "ai" / "docling" / "core" / "v1" / "docling_document.proto").exists():
-            return core_proto
+        found = _valid_proto_dir(core_proto)
+        if found is not None:
+            return found
     except ImportError:
         pass
+    commit = _installed_core_commit()
+    if commit:
+        cached = _uv_cache_proto(commit)
+        if cached is not None:
+            return cached
     # Fallback: sibling repo at ../docling-core (for development before docling-core releases proto).
-    sibling = ROOT.parent / "docling-core" / "proto"
-    if (sibling / "ai" / "docling" / "core" / "v1" / "docling_document.proto").exists():
+    sibling = _valid_proto_dir(ROOT.parent / "docling-core" / "proto")
+    if sibling is not None:
         return sibling
     raise SystemExit(
         "docling-core with proto is required to lint serve protos. "
@@ -65,7 +122,9 @@ def main() -> None:
     write = "--write" in sys.argv[1:]
     buf = shutil.which("buf")
     if buf is None:
-        raise SystemExit("buf is not installed or not on PATH. See https://buf.build/docs/installation")
+        raise SystemExit(
+            "buf is not installed or not on PATH. See https://buf.build/docs/installation"
+        )
 
     core_proto = get_core_proto_dir()
     failures = 0
