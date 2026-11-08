@@ -1487,6 +1487,89 @@ def test_confidence_scores_optional_fields_and_grades():
     assert not proto.HasField("low_grade_raw")
 
 
+def test_confidence_scores_pages_round_trip_both_directions():
+    """docling 2.140 ConfidenceScores.pages -> map<int32, ConfidenceScores> = 11."""
+    from docling.datamodel.service.responses import ConfidenceScores, QualityGrade
+
+    from docling_serve.grpc.mapping import confidence_from_proto, confidence_to_proto
+
+    scores = ConfidenceScores(
+        parse_score=0.9,
+        layout_score=0.8,
+        mean_score=0.85,
+        low_score=0.7,
+        mean_grade=QualityGrade.GOOD,
+        low_grade=QualityGrade.FAIR,
+        pages={
+            1: ConfidenceScores(
+                layout_score=0.95,
+                mean_grade=QualityGrade.EXCELLENT,
+                low_grade=QualityGrade.GOOD,
+            ),
+            3: ConfidenceScores(
+                ocr_score=0.4,
+                low_score=0.4,
+                mean_grade=QualityGrade.POOR,
+                low_grade=QualityGrade.POOR,
+            ),
+        },
+    )
+    proto = confidence_to_proto(scores)
+    assert sorted(proto.pages) == [1, 3]
+    assert proto.pages[1].layout_score == pytest.approx(0.95)
+    assert not proto.pages[1].HasField("ocr_score")
+    assert proto.pages[1].mean_grade == docling_serve_types_pb2.QUALITY_GRADE_EXCELLENT
+    assert proto.pages[3].ocr_score == pytest.approx(0.4)
+    assert proto.pages[3].low_grade == docling_serve_types_pb2.QUALITY_GRADE_POOR
+    assert len(proto.pages[3].pages) == 0
+
+    wire = docling_serve_types_pb2.ConfidenceScores.FromString(
+        proto.SerializeToString()
+    )
+    back = confidence_from_proto(wire)
+    assert back == scores
+    assert isinstance(back.pages[3].mean_grade, QualityGrade)
+
+
+@pytest.mark.parametrize("pages", [None, {}])
+def test_confidence_scores_without_pages_encode_an_empty_map(pages):
+    """None and {} both mean no per-page scores; both decode to the {} default."""
+    from docling.datamodel.service.responses import ConfidenceScores
+
+    from docling_serve.grpc.mapping import confidence_from_proto, confidence_to_proto
+
+    proto = confidence_to_proto(ConfidenceScores(mean_score=0.5, pages=pages))
+    assert len(proto.pages) == 0
+    assert confidence_from_proto(proto).pages == {}
+
+
+def test_confidence_scores_from_scores_report_carries_pages():
+    """ConfidenceScores.from_scores(ConfidenceReport) fills pages; the proto keeps them."""
+    from docling.datamodel.base_models import ConfidenceReport, PageConfidenceScores
+    from docling.datamodel.service.responses import ConfidenceScores
+
+    from docling_serve.grpc.mapping import confidence_from_proto, confidence_to_proto
+
+    report = ConfidenceReport()
+    report.pages[2] = PageConfidenceScores(layout_score=0.6, parse_score=0.7)
+    report.layout_score = 0.6
+    report.parse_score = 0.7
+    scores = ConfidenceScores.from_scores(report)
+    assert set(scores.pages) == {2}
+    proto = confidence_to_proto(scores)
+    assert proto.pages[2].layout_score == pytest.approx(0.6)
+    assert proto.pages[2].parse_score == pytest.approx(0.7)
+    assert confidence_from_proto(proto) == scores
+
+
+def test_confidence_scores_from_proto_rejects_unknown_grade_raw():
+    from docling_serve.grpc.mapping import confidence_from_proto
+
+    message = docling_serve_types_pb2.ConfidenceScores(mean_grade_raw="stellar")
+    with pytest.raises(ValueError, match="mean_grade_raw='stellar'"):
+        confidence_from_proto(message)
+
+
 def test_profiling_item_maps_full_samples_alongside_totals():
     from datetime import datetime, timezone
 

@@ -271,3 +271,13 @@ upstream so the VLM extras resolve.
 | `allow_custom_chart_extraction_config` and chart-extraction preset/engine allowlists (#706) | additive (settings/policy) | serve | No new convert-option tag; gRPC already reuses `validate_convert_options`. Custom chart config stays fields 52/53. |
 | `enable_api_docs`, Prometheus-gated `/metrics`, RQ multi-queue drain, RQ wait metrics, Gradio→Vite UI (#707/#710/#711/#714) | serve process / UI | serve | Not convert-request proto. |
 
+
+## 2026-10-19: core 2.103.0, slim 2.140.0 (serve still 1.37.0)
+
+| Change | Kind | Layer | Proto accommodation |
+| --- | --- | --- | --- |
+| `ConfidenceScores.pages: Optional[dict[int, ConfidenceScores]] = {}` (slim 2.139) | additive | serve response (engine model) | `map<int32, ConfidenceScores> pages = 11`. `confidence_to_proto` maps it recursively and the new `confidence_from_proto` maps it back. None and `{}` share the empty map and decode to `{}`; docling never emits None. The schema validator now treats `optional<map<K,V>>` as map-like, the same way it already treated `optional<list<T>>`; key and value types are still compared. |
+| `DocumentOrigin` accepts calendar MIME types, `application/vnd.cv+pdf`, `application/zip` (core #892, #898, #891) | validator-only | core | `mimetype` is a string; no new tag. Round-trip tests in docling-core. |
+| `allow_image_file_uri` gate on every local image read, `DoclingDocument.load_local_images()`, `allow_local_images` on `load_from_json`/`load_from_yaml` (core #900) | method / settings | core | No wire change. `ImageRef.uri` is a string and the converter never opens it; docling-core tests prove both directions leave `_pil` unset. |
+| `_count_column_header_rows` header-row rule, `TableData.remove_rows` dedupe, contextualized table chunk token limits, `LineBasedTokenChunker` prefix handling (core #823, #834, #690) | behavioural | core | No document field. |
+| `ApiAsrOptions` (remote OpenAI-compatible transcription), `ThreadedDoclingParseBackendOptions.max_concurrent_results`, `VlmStopReason` and `VlmPrediction.stop_reason` / `error_message` (slim 2.139/2.140) | additive (engine) | engine | Not on any docling-serve request or response model, so no serve wire. Tracked for gRParse and grpc-asr in `parity_backlog.md`. |
