@@ -9,6 +9,7 @@ from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
 
 from docling_serve.app import create_app
+from docling_serve.orchestrator_factory import get_async_orchestrator
 from docling_serve.settings import docling_serve_settings
 
 
@@ -25,8 +26,9 @@ def auth_headers():
     return headers
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def app():
+    get_async_orchestrator.cache_clear()
     app = create_app()
 
     async with LifespanManager(app) as manager:
@@ -34,7 +36,7 @@ async def app():
         yield manager.app
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def client(app):
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://app.io"
@@ -85,7 +87,7 @@ async def convert_file(client: AsyncClient, auth_headers: dict):
     return task
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_clear_results(client: AsyncClient, auth_headers: dict):
     """Test removal of task."""
 
@@ -125,7 +127,7 @@ async def test_clear_results(client: AsyncClient, auth_headers: dict):
     print("Result was no longer found.")
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_delay_remove(client: AsyncClient, auth_headers: dict):
     """Test automatic removal of task with delay (orchestrator-owned result_removal_delay)."""
     from docling_serve.orchestrator_factory import (
