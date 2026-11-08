@@ -108,6 +108,7 @@ class FakeOrchestrator:
             targets=targets,
             convert_options=convert_options,
             callbacks=callbacks or [],
+            target_document_version=kwargs.get("target_document_version"),
         )
         self.tasks[task_id] = task
         self.positions[task_id] = 0
@@ -494,6 +495,14 @@ async def test_get_convert_result_presigned_artifacts_arm(grpc_stub, orchestrato
             low_score=0.4,
             mean_grade=QualityGrade.GOOD,
             low_grade=QualityGrade.POOR,
+            pages={
+                3: ConfidenceScores(
+                    ocr_score=0.4,
+                    low_score=0.4,
+                    mean_grade=QualityGrade.POOR,
+                    low_grade=QualityGrade.POOR,
+                )
+            },
         ),
     )
     orchestrator.results["presigned-1"] = DoclingTaskResult(
@@ -538,6 +547,11 @@ async def test_get_convert_result_presigned_artifacts_arm(grpc_stub, orchestrato
     assert not doc.confidence.HasField("ocr_score")
     assert doc.confidence.mean_grade == docling_serve_types_pb2.QUALITY_GRADE_GOOD
     assert doc.confidence.low_grade == docling_serve_types_pb2.QUALITY_GRADE_POOR
+    assert list(doc.confidence.pages) == [3]
+    page = doc.confidence.pages[3]
+    assert page.ocr_score == pytest.approx(0.4)
+    assert not page.HasField("parse_score")
+    assert page.mean_grade == docling_serve_types_pb2.QUALITY_GRADE_POOR
 
 
 class FailingTaskOrchestrator(FakeOrchestrator):
@@ -623,7 +637,9 @@ async def test_get_chunk_result(grpc_stub, orchestrator):
 
 
 @pytest.mark.asyncio
-async def test_get_chunk_result_chunking_info_is_typed_scalar_map(grpc_stub, orchestrator):
+async def test_get_chunk_result_chunking_info_is_typed_scalar_map(
+    grpc_stub, orchestrator
+):
     """ChunkedDocumentResult.chunking_info flattens to map<string, ScalarValue>."""
     task_id = "chunk-info"
     chunk = ChunkedDocumentResultItem(
@@ -663,10 +679,7 @@ async def test_get_chunk_result_chunking_info_is_typed_scalar_map(grpc_stub, orc
     assert info["use_markdown_tables"].bool_value is False
     assert info["max_tokens"].int_value == 128
     assert info["merge_peers"].bool_value is True
-    assert (
-        info["tokenizer"].string_value
-        == "sentence-transformers/all-MiniLM-L6-v2"
-    )
+    assert info["tokenizer"].string_value == "sentence-transformers/all-MiniLM-L6-v2"
 
 
 @pytest.mark.asyncio

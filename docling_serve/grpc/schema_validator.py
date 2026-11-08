@@ -36,6 +36,29 @@ ALLOWED_COERCIONS: dict[str, tuple[str, str]] = {
         "optional<map<string,Any>>",
         "map<string,message:ScalarValue>",
     ),
+    # OcrLang is a presence wrapper so an empty language list stays distinct
+    # from an omitted one. Proto3 repeated fields have no presence.
+    "**.lang": ("list<string>", "message:OcrLang"),
+    # Closed literals are strings on the Pydantic model and enums on the wire.
+    "RapidOcrOptions.backend": ("string", "optional<enum:RapidOcrBackend>"),
+    "RapidOcrOptions.model_size": ("string", "optional<enum:RapidOcrModelSize>"),
+    "NemotronOcrOptions.merge_level": (
+        "string",
+        "optional<enum:NemotronOcrMergeLevel>",
+    ),
+    "KserveV2OcrOptions.transport": ("string", "optional<enum:KserveV2Transport>"),
+    "RapidOcrOptions.rapidocr_params": (
+        "map<string,Any>",
+        "map<string,message:ScalarValue>",
+    ),
+    "KserveV2OcrOptions.request_parameters": (
+        "map<string,Any>",
+        "map<string,message:ScalarValue>",
+    ),
+    "KserveV2OcrOptions.grpc_channel_args": (
+        "list<tuple<string,Any>>",
+        "list<message:KserveGrpcChannelArg>",
+    ),
     "table_structure_custom_config": (
         "optional<map<string,Any>>",
         "map<string,message:ScalarValue>",
@@ -220,6 +243,17 @@ _BASE_FIELD_WRAPPERS: dict[str, str] = {
     "TextItem": "base",
     "FieldHeadingItem": "base",
     "FieldValueItem": "base",
+    # OCR engine messages flatten OcrOptionsBase so inherited fields compare
+    # at the same path as Pydantic model_fields. A new engine message that
+    # embeds OcrOptionsBase is registered at validation time as well.
+    "OcrAutoOptions": "base",
+    "EasyOcrOptions": "base",
+    "TesseractOcrOptions": "base",
+    "TesseractCliOcrOptions": "base",
+    "RapidOcrOptions": "base",
+    "OcrMacOptions": "base",
+    "NemotronOcrOptions": "base",
+    "KserveV2OcrOptions": "base",
 }
 
 # Proto messages that should be treated as leaf nodes (no recursive descent).
@@ -236,6 +270,10 @@ _PROTO_LEAF_MESSAGES: set[str] = {
     "StringIntPair",
     # Serve ScalarValue is a closed scalar oneof; Pydantic uses Dict[str, Any].
     "ScalarValue",
+    # Presence wrapper for OCR lang. Compared as a whole via the lang coercion.
+    "OcrLang",
+    # (key, scalar) pair. Compared as a whole via the grpc_channel_args coercion.
+    "KserveGrpcChannelArg",
     # Validated as their own top-level pairs (see _NESTED_LEAF_MODELS).
     "ConvertDocumentOptions",
     "DocumentResponse",
@@ -275,6 +313,15 @@ _PROTO_ONLY_FIELD_NAMES: set[str] = {
     # docling-core MarkdownParams.caption_placement. ConvertDocumentsOptions
     # does not carry it; gRPC applies it when re-exporting Markdown.
     "caption_placement",
+    # gRPC form of the REST Accept-Docling-Document-Version header.
+    # ConvertSourcesRequest and BatchConvertSourcesRequest do not carry it.
+    "target_document_version",
+    # Typed OCR oneof. Pydantic keeps the engine in ocr_custom_config["kind"]
+    # plus the dict. The arm is the kind. Sub-messages are validated on their own.
+    "ocr_options",
+    # Deprecated computed alias of OcrOptions.mode == FULL_PAGE. Not in
+    # model_fields. The mapper still accepts an explicit true or false.
+    "force_full_page_ocr",
 }
 
 # Wire form of Pydantic `extra="allow"` payloads on serve connector models
@@ -349,9 +396,19 @@ _RAW_FALLBACK_SUFFIXES: set[str] = {
     "low_grade_raw",
     "artifact_type_raw",
     "output_format_raw",
+    # ResponseFormat companion. A value the enum does not name yet is carried
+    # here so the mapping does not drop it.
+    "response_format_raw",
     "task_type_raw",
     "component_type_raw",
     "document_type_raw",
+    # OCR closed literals. The Pydantic side is an enum (OcrMode) or a Literal
+    # string. The raw companion carries a value the enum does not name yet.
+    "mode_raw",
+    "backend_raw",
+    "model_size_raw",
+    "merge_level_raw",
+    "transport_raw",
 }
 
 _WRAPPER_MEMBER_NAMES: set[str] = {
@@ -458,6 +515,9 @@ def _normalize_pydantic_type(tp: Any) -> str:
     """Return a canonical string for a Pydantic type annotation."""
     tp = _unwrap_annotated(tp)
     tp = _resolve_forward_ref(tp)
+
+    if tp is Any:
+        return "Any"
 
     if tp is type(None):
         return "none"
@@ -986,7 +1046,12 @@ def _check_cardinality(
             f"Cardinality mismatch at '{path}': proto is repeated ({proto_canonical}) "
             f"but Pydantic is not list-like ({pydantic_canonical})"
         )
-    if proto_is_map and not py_is_map:
+    # optional<map<K,V>> is map-like for proto3 map fields: proto has no null
+    # map, so None and {} share the empty encoding (absent => empty).
+    py_is_optional_map = pydantic_canonical.startswith(
+        "optional<map<"
+    ) and pydantic_canonical.endswith(">")
+    if proto_is_map and not py_is_map and not py_is_optional_map:
         return (
             f"Cardinality mismatch at '{path}': proto is map ({proto_canonical}) "
             f"but Pydantic is not dict-like ({pydantic_canonical})"
@@ -1180,6 +1245,7 @@ def validate_serve_types_schema() -> None:
     Logs warnings for missing fields.
     """
     from docling.datamodel.base_models import ErrorItem
+    from docling.datamodel.pipeline_options import OcrOptions
     from docling.datamodel.service.callbacks import (
         CallbackSpec,
         DocumentCompletedItem,
@@ -1233,6 +1299,17 @@ def validate_serve_types_schema() -> None:
 
     from .gen.ai.docling.serve.v1 import docling_serve_types_pb2 as pb2
 
+    # A new engine message that embeds OcrOptionsBase flattens the same way.
+    for proto_name, desc in pb2.DESCRIPTOR.message_types_by_name.items():
+        base = desc.fields_by_name.get("base")
+        if (
+            base is not None
+            and base.type == descriptor_mod.FieldDescriptor.TYPE_MESSAGE
+            and base.message_type is not None
+            and base.message_type.name == "OcrOptionsBase"
+        ):
+            _BASE_FIELD_WRAPPERS[proto_name] = "base"
+
     pairs: list[tuple[type, str]] = [
         (ConvertDocumentsOptions, "ConvertDocumentOptions"),
         (FileSourceRequest, "FileSource"),
@@ -1279,6 +1356,15 @@ def validate_serve_types_schema() -> None:
         (ProgressDocumentCompleted, "ProgressDocumentCompleted"),
         (ProgressTaskCompleted, "ProgressTaskCompleted"),
     ]
+
+    # Every concrete OcrOptions subclass is walked. A field slim adds later
+    # shows up here as a Pydantic field the proto does not have. A new
+    # subclass with no message is a hard failure.
+    pending = list(OcrOptions.__subclasses__())
+    while pending:
+        ocr_cls = pending.pop()
+        pending.extend(ocr_cls.__subclasses__())
+        pairs.append((ocr_cls, ocr_cls.__name__))
 
     mismatches: list[str] = []
     allowed: list[str] = []

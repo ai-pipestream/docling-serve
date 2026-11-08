@@ -167,6 +167,8 @@ enum VlmModelType {
 }
 
 // Response format for VLM model output.
+// Tags 1-5 stay as first published. Later members follow docling 2.142.1's
+// ResponseFormat and keep their own tags; declaration order is not the wire id.
 enum ResponseFormat {
   RESPONSE_FORMAT_UNSPECIFIED = 0;
   RESPONSE_FORMAT_DOCTAGS = 1;
@@ -174,6 +176,14 @@ enum ResponseFormat {
   RESPONSE_FORMAT_HTML = 3;
   RESPONSE_FORMAT_OTSL = 4;
   RESPONSE_FORMAT_PLAINTEXT = 5;
+  RESPONSE_FORMAT_DOCLANG = 6;
+  RESPONSE_FORMAT_DEEPSEEKOCR_MARKDOWN = 7;
+  RESPONSE_FORMAT_UNLIMITED_OCR_MARKDOWN = 8;
+  RESPONSE_FORMAT_CHANDRA_HTML = 9;
+  RESPONSE_FORMAT_DOTS_JSON = 10;
+  RESPONSE_FORMAT_NEMOTRON_PARSE_V2 = 11;
+  RESPONSE_FORMAT_NEMOTRON_PARSE_V3_5 = 12;
+  RESPONSE_FORMAT_MINERU2 = 13;
 }
 
 // Inference framework for local VLM models.
@@ -532,6 +542,9 @@ message VlmModelLocal {
   optional TransformersModelType transformers_model_type = 6;
   map<string, ScalarValue> extra_generation_config = 7;
   optional double temperature = 8;
+  // Forward-compat companion for response_format. A value the enum does not
+  // name yet is carried here and is not dropped.
+  optional string response_format_raw = 9;
 }
 
 message VlmModelApi {
@@ -544,10 +557,15 @@ message VlmModelApi {
   optional double scale = 7;
   optional ResponseFormat response_format = 8;
   optional double temperature = 9;
+  // Forward-compat companion for response_format.
+  optional string response_format_raw = 10;
 }
 
 message BaseVlmEngineOptions {
   VlmEngineType engine_type = 1;
+  // Inline engines only (auto, transformers, mlx, vllm). API engines reject
+  // the field. Distinct from VlmModelSpec.trust_remote_code.
+  optional bool trust_remote_code = 2;
 }
 
 message EngineModelConfig {
@@ -585,6 +603,8 @@ message VlmModelSpec {
   optional double temperature = 11;
   optional int32 max_new_tokens = 12;
   map<string, ScalarValue> extra_generation_config = 13;
+  // Forward-compat companion for response_format.
+  optional string response_format_raw = 14;
 }
 
 message VlmConvertOptions {
@@ -653,6 +673,170 @@ message HeadingHierarchyOptions {
   optional double style_size_tolerance = 9;
 }
 
+// OcrMode mirrors docling.datamodel.pipeline_options.OcrMode.
+enum OcrMode {
+  OCR_MODE_UNSPECIFIED = 0;
+  OCR_MODE_FULL_PAGE = 1;
+  OCR_MODE_LAYOUT_REGIONS = 2;
+  OCR_MODE_PDF_AWARE_LAYOUT_REGIONS = 3;
+  OCR_MODE_DEFAULT = 4;
+}
+
+// RapidOcrBackend mirrors the RapidOcrBackend literal.
+enum RapidOcrBackend {
+  RAPID_OCR_BACKEND_UNSPECIFIED = 0;
+  RAPID_OCR_BACKEND_ONNXRUNTIME = 1;
+  RAPID_OCR_BACKEND_OPENVINO = 2;
+  RAPID_OCR_BACKEND_PADDLE = 3;
+  RAPID_OCR_BACKEND_TORCH = 4;
+}
+
+// RapidOcrModelSize mirrors RapidOcrOptions.model_size.
+enum RapidOcrModelSize {
+  RAPID_OCR_MODEL_SIZE_UNSPECIFIED = 0;
+  RAPID_OCR_MODEL_SIZE_TINY = 1;
+  RAPID_OCR_MODEL_SIZE_SMALL = 2;
+  RAPID_OCR_MODEL_SIZE_MEDIUM = 3;
+}
+
+// NemotronOcrMergeLevel mirrors NemotronOcrOptions.merge_level.
+enum NemotronOcrMergeLevel {
+  NEMOTRON_OCR_MERGE_LEVEL_UNSPECIFIED = 0;
+  NEMOTRON_OCR_MERGE_LEVEL_WORD = 1;
+  NEMOTRON_OCR_MERGE_LEVEL_SENTENCE = 2;
+  NEMOTRON_OCR_MERGE_LEVEL_PARAGRAPH = 3;
+}
+
+// KserveV2Transport mirrors KserveV2OptionsMixin.transport.
+enum KserveV2Transport {
+  KSERVE_V2_TRANSPORT_UNSPECIFIED = 0;
+  KSERVE_V2_TRANSPORT_GRPC = 1;
+  KSERVE_V2_TRANSPORT_HTTP = 2;
+}
+
+// OcrLang is a presence wrapper. Proto3 repeated fields cannot be optional,
+// and an empty language list is a real value (the engine's own default, which
+// for Tesseract is per-page script detection). An omitted `lang` leaves the
+// engine class default in place. An empty `values` list is explicit.
+message OcrLang {
+  repeated string values = 1;
+}
+
+// One gRPC channel argument. The value is a scalar. Nested values are rejected
+// rather than encoded as JSON.
+message KserveGrpcChannelArg {
+  optional string key = 1;
+  ScalarValue value = 2;
+}
+
+// OcrOptionsBase mirrors the stored fields of docling's OcrOptions (slim
+// 2.145.0). Every scalar is optional so an omitted field is not the same as
+// false, 0, or empty. `kind` is the ConvertDocumentOptions.ocr_options oneof
+// arm, not a field. `force_full_page_ocr` is the deprecated computed alias of
+// `mode = FULL_PAGE`. It is not a stored Pydantic field. Setting it true is
+// the old name for full-page mode. `bitmap_area_threshold` was removed from
+// OcrOptions and is not a field here. A key the selected message does not
+// define still travels in ocr_custom_config.
+message OcrOptionsBase {
+  optional OcrMode mode = 1;
+  optional string mode_raw = 2;
+  OcrLang lang = 3;
+  optional double scale = 4;
+  optional bool replace_broken_text_layer = 5;
+  optional bool force_full_page_ocr = 6;
+}
+
+// OcrAutoOptions mirrors docling's OcrAutoOptions (kind "auto").
+message OcrAutoOptions {
+  OcrOptionsBase base = 1;
+}
+
+// EasyOcrOptions mirrors docling's EasyOcrOptions (kind "easyocr").
+message EasyOcrOptions {
+  OcrOptionsBase base = 1;
+  optional bool use_gpu = 2;
+  optional double confidence_threshold = 3;
+  optional string model_storage_directory = 4;
+  optional string recog_network = 5;
+  optional bool download_enabled = 6;
+  optional bool suppress_mps_warnings = 7;
+}
+
+// TesseractOcrOptions mirrors docling's TesseractOcrOptions (kind "tesserocr",
+// the Python tesserocr bindings).
+message TesseractOcrOptions {
+  OcrOptionsBase base = 1;
+  optional string path = 2;
+  optional int32 psm = 3;
+}
+
+// TesseractCliOcrOptions mirrors docling's TesseractCliOcrOptions (kind
+// "tesseract", the CLI binary). The factory kind is "tesseract", not the
+// deprecated OcrEngine string "tesseract_cli".
+message TesseractCliOcrOptions {
+  OcrOptionsBase base = 1;
+  optional string tesseract_cmd = 2;
+  optional string path = 3;
+  optional int32 psm = 4;
+}
+
+// RapidOcrOptions mirrors docling's RapidOcrOptions (kind "rapidocr").
+message RapidOcrOptions {
+  OcrOptionsBase base = 1;
+  optional RapidOcrBackend backend = 2;
+  optional string backend_raw = 3;
+  optional RapidOcrModelSize model_size = 4;
+  optional string model_size_raw = 5;
+  optional double text_score = 6;
+  optional bool use_det = 7;
+  optional bool use_cls = 8;
+  optional bool detect_orientation = 9;
+  optional bool use_rec = 10;
+  optional bool print_verbose = 11;
+  optional string det_model_path = 12;
+  optional string cls_model_path = 13;
+  optional string rec_model_path = 14;
+  optional string rec_keys_path = 15;
+  optional string rec_font_path = 16;
+  optional string font_path = 17;
+  map<string, ScalarValue> rapidocr_params = 18;
+}
+
+// OcrMacOptions mirrors docling's OcrMacOptions (kind "ocrmac").
+// `recognition` and `framework` are open strings on the Pydantic model.
+message OcrMacOptions {
+  OcrOptionsBase base = 1;
+  optional string recognition = 2;
+  optional string framework = 3;
+}
+
+// NemotronOcrOptions mirrors docling's NemotronOcrOptions (kind "nemotron-ocr").
+message NemotronOcrOptions {
+  OcrOptionsBase base = 1;
+  optional NemotronOcrMergeLevel merge_level = 2;
+  optional string merge_level_raw = 3;
+  optional int32 batch_size = 4;
+}
+
+// KserveV2OcrOptions mirrors docling's KserveV2OcrOptions (kind
+// "kserve_v2_ocr"), including KserveV2OptionsMixin.
+message KserveV2OcrOptions {
+  OcrOptionsBase base = 1;
+  optional string url = 2;
+  optional string model_name = 3;
+  optional string model_version = 4;
+  optional KserveV2Transport transport = 5;
+  optional string transport_raw = 6;
+  map<string, string> headers = 7;
+  map<string, string> grpc_metadata = 8;
+  optional bool grpc_use_tls = 9;
+  optional int64 grpc_max_message_bytes = 10;
+  repeated KserveGrpcChannelArg grpc_channel_args = 11;
+  optional bool use_binary_data = 12;
+  optional double timeout = 13;
+  map<string, ScalarValue> request_parameters = 14;
+}
+
 message ConvertDocumentOptions {
   repeated InputFormat from_formats = 1;
   repeated OutputFormat to_formats = 2;
@@ -692,6 +876,10 @@ message ConvertDocumentOptions {
   map<string, ScalarValue> table_structure_custom_config = 36;
   map<string, ScalarValue> layout_custom_config = 37;
   optional string ocr_preset = 38;
+  // Fallback for keys the selected OCR message does not define. When
+  // `ocr_options` is set, a key that message already defines is an error.
+  // The typed value is not overridden. When `ocr_options` is unset, this map
+  // is the whole custom config, including `kind`, as jobkit expects.
   map<string, ScalarValue> ocr_custom_config = 39;
   optional string table_structure_preset = 40;
   optional string layout_preset = 41;
@@ -718,6 +906,26 @@ message ConvertDocumentOptions {
   // chart_extraction_custom_config.
   optional string chart_extraction_preset = 52;
   optional ChartExtractionVlmEngineOptions chart_extraction_custom_config = 53;
+  // Typed OCR engine options (slim 2.145). The arm is the factory kind.
+  // Precedence: the arm owns every field of that message. `ocr_custom_config`
+  // may only add keys the message does not define. A repeated key is an error.
+  // A non-auto `ocr_preset`, or an `ocr_engine` whose string is not the arm's
+  // kind, is an error. `ocr_lang` fills `lang` only when the arm left `lang`
+  // unset. Unset optional fields are omitted from the dict jobkit splats into
+  // `ocr_factory.create_options`, so the engine default stays in place.
+  // Explicit false is written as false.
+  oneof ocr_options {
+    OcrAutoOptions ocr_auto = 54;
+    EasyOcrOptions easyocr = 55;
+    // kind "tesserocr"
+    TesseractOcrOptions tesseract = 56;
+    // kind "tesseract"
+    TesseractCliOcrOptions tesseract_cli = 57;
+    RapidOcrOptions rapidocr = 58;
+    OcrMacOptions ocrmac = 59;
+    NemotronOcrOptions nemotron_ocr = 60;
+    KserveV2OcrOptions kserve_v2_ocr = 61;
+  }
 }
 
 // ============================================================================
@@ -780,8 +988,9 @@ message PublicFailureInfo {
 // Quality / artifact types
 // ============================================================================
 
-// ConfidenceScores mirrors docling's JSON-safe confidence snapshot. Scores are
-// document-level; Pydantic coerces NaN to null, so absent means unknown.
+// ConfidenceScores mirrors docling's JSON-safe confidence snapshot. The top
+// level carries document scores and `pages` carries one snapshot per page;
+// Pydantic coerces NaN to null, so absent means unknown.
 message ConfidenceScores {
   optional double parse_score = 1;
   optional double layout_score = 2;
@@ -794,6 +1003,12 @@ message ConfidenceScores {
   // Raw fallbacks for newer grade vocabularies.
   optional string mean_grade_raw = 9;
   optional string low_grade_raw = 10;
+  // Per-page scores keyed by 1-based page number (docling 2.140
+  // ConfidenceScores.pages). Page entries are flat: their own `pages` map is
+  // always empty. Pydantic types the field Optional[dict] with a {} default;
+  // docling never emits None, and proto has no null map, so None and {} both
+  // encode as an empty map and decode to {}.
+  map<int32, ConfidenceScores> pages = 11;
 }
 
 // ProfilingScope mirrors docling.utils.profiling.ProfilingScope.
@@ -929,8 +1144,13 @@ message CallbackSpec {
 // ============================================================================
 
 // ZipArchiveResult mirrors docling's ZipArchiveResult (ZipTarget).
+// `kind` stays off the wire. `filename` is copied only when the producer
+// set it. Unset is not an empty string. Slim 2.143 added the field. Jobkit
+// 3.9.1 still builds the archive without a name, so the wire value stays
+// unset until a producer sets it. Clients keep their current fallback.
 message ZipArchiveResult {
   bytes content = 1;
+  optional string filename = 2;
 }
 
 // RemoteTargetResult mirrors the REST PresignedUrlConvertDocumentResponse
@@ -1040,6 +1260,11 @@ message ConvertDocumentRequest {
   // Progress callbacks (ConvertSourcesRequest.callbacks). Rejected when the
   // service policy disables callbacks.
   repeated CallbackSpec callbacks = 4;
+  // gRPC form of the REST Accept-Docling-Document-Version header.
+  // Pattern ^\d{1,9}\.\d{1,9}\.\d{1,9}$. Versions below 1.{FIRST_SUPPORTED_MINOR}.0
+  // are rejected. JSON exports and JSON target files are down-projected to it.
+  // The typed DoclingDocument stays on the current schema.
+  optional string target_document_version = 5;
 }
 
 // BatchConvertDocumentRequest mirrors POST /v1/convert/source/batch
@@ -1053,6 +1278,8 @@ message BatchConvertDocumentRequest {
   optional Target target = 3;
   repeated Target targets = 4;
   repeated CallbackSpec callbacks = 5;
+  // Same contract as ConvertDocumentRequest.target_document_version.
+  optional string target_document_version = 6;
 }
 
 // ConvertDocumentResponse mirrors the REST convert response body.
