@@ -33,8 +33,8 @@ classifiers = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "docling-slim[standard,service-client,models-remote,format-opendocument]>=2.140.0,<3.0.0",
-    "docling-core>=2.103.0",
+    "docling-slim[standard,service-client,models-remote,format-opendocument]>=2.150.0,<3.0.0",
+    "docling-core>=2.106.0",
     "docling-jobkit[rq,ray,vlm,azure,gcloudstorage,gdrive]>=3.9.1,<4",
     "fastapi[standard]>=0.138.0,<1.0.0",
     "httpx~=0.28",
@@ -208,7 +208,7 @@ torchvision = [
 pytorch-triton-rocm = [
   { index = "pytorch-rocm", marker = "sys_platform == 'linux'" },
 ]
-docling-core = { git = "https://github.com/ai-pipestream/docling-core", rev = "005037bb9e1af28971204c813e1d7b90be8e70eb" }
+docling-core = { git = "https://github.com/ai-pipestream/docling-core", rev = "eeb5ca007a44e42f1185a7f7a0447b7b5c25784e" }
 
 triton-rocm = [
     { index = "pytorch-rocm72", group = "rocm72", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" }

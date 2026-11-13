@@ -13,12 +13,14 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from google.protobuf import text_format
+
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling_core.proto import docling_document_to_proto
 from docling_core.proto.gen.ai.docling.core.v1 import docling_document_pb2 as doc_pb2
-from google.protobuf import text_format
+from docling_core.types.doc.common.constants import CURRENT_VERSION
 
 from docling_serve.grpc.gen.ai.docling.serve.v1 import docling_serve_types_pb2 as pb2
 from docling_serve.grpc.mapping import to_convert_options
@@ -42,7 +44,9 @@ def _normalize_for_compare(msg: doc_pb2.DoclingDocument) -> doc_pb2.DoclingDocum
 def test_regen_script_versions_file_documents_pins():
     versions = GOLDEN_DIR / "VERSIONS.txt"
     if not versions.is_file():
-        pytest.skip("goldens not generated yet; run scripts/regen_grpc_parity_goldens.py")
+        pytest.skip(
+            "goldens not generated yet; run scripts/regen_grpc_parity_goldens.py"
+        )
     text = versions.read_text(encoding="utf-8")
     assert "docling-core=" in text
     assert "docling-serve=" in text
@@ -66,6 +70,8 @@ def test_pdf_fixture_matches_checked_in_docling_document_golden():
     expected.ParseFromString(pb_path.read_bytes())
     expected = _normalize_for_compare(expected)
 
+    assert actual.version == CURRENT_VERSION
+    assert expected.version == CURRENT_VERSION
     assert actual.name == expected.name
     assert len(actual.texts) == len(expected.texts)
     assert len(actual.tables) == len(expected.tables)
@@ -101,13 +107,18 @@ def test_pdf_fixture_matches_checked_in_docling_document_golden():
 
 
 def test_page_range_and_heading_options_round_trip():
-    from docling_serve.grpc.gen.ai.docling.core.v1 import docling_document_pb2 as core_pb2
+    from docling_serve.grpc.gen.ai.docling.core.v1 import (
+        docling_document_pb2 as core_pb2,
+    )
 
     options = pb2.ConvertDocumentOptions(
         page_range=core_pb2.IntSpan(start=1, end=2),
         do_pdf_heading_hierarchy=True,
         pdf_heading_hierarchy_options=pb2.HeadingHierarchyOptions(
-            numbering_schemes=["part", "arabic"],
+            numbering_schemes=[
+                pb2.NUMBERING_SCHEME_PART,
+                pb2.NUMBERING_SCHEME_ARABIC,
+            ],
         ),
     )
     mapped = to_convert_options(options)

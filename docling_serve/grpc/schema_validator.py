@@ -111,6 +111,51 @@ ALLOWED_COERCIONS: dict[str, tuple[str, str]] = {
     ),
     # ProgressTaskCompleted.task_status is Literal["success", "failure"].
     "ProgressTaskCompleted.task_status": ("string", "enum:TaskStatus"),
+    # Preset ids are strings on ConvertDocumentsOptions and per-family enums
+    # on the wire. Unknown ids stay on the *_raw companion.
+    "vlm_pipeline_preset": (
+        "optional<string>",
+        "optional<enum:VlmPipelinePreset>",
+    ),
+    "picture_description_preset": (
+        "optional<string>",
+        "optional<enum:PictureDescriptionPreset>",
+    ),
+    "code_formula_preset": (
+        "optional<string>",
+        "optional<enum:CodeFormulaPreset>",
+    ),
+    "ocr_preset": ("string", "optional<enum:OcrPreset>"),
+    "table_structure_preset": (
+        "optional<string>",
+        "optional<enum:TableStructurePreset>",
+    ),
+    "layout_preset": ("optional<string>", "optional<enum:LayoutPreset>"),
+    "picture_classification_preset": (
+        "optional<string>",
+        "optional<enum:PictureClassificationPreset>",
+    ),
+    "chunking_preset": ("optional<string>", "optional<enum:ChunkingPreset>"),
+    "chart_extraction_preset": (
+        "optional<string>",
+        "optional<enum:ChartExtractionPreset>",
+    ),
+    "EngineModelConfig.torch_dtype": (
+        "optional<string>",
+        "optional<enum:TorchDtype>",
+    ),
+    "NemotronParseOptions.passes": (
+        "string",
+        "optional<enum:NemotronParsePasses>",
+    ),
+    "NemotronParseOptions.triple_regions": (
+        "string",
+        "optional<enum:NemotronParseTripleRegions>",
+    ),
+    "**.numbering_schemes": (
+        "optional<list<string>>",
+        "list<enum:NumberingScheme>",
+    ),
 }
 
 # Pydantic models whose proto counterpart carries a different message name.
@@ -409,6 +454,19 @@ _RAW_FALLBACK_SUFFIXES: set[str] = {
     "model_size_raw",
     "merge_level_raw",
     "transport_raw",
+    "vlm_pipeline_preset_raw",
+    "picture_description_preset_raw",
+    "code_formula_preset_raw",
+    "ocr_preset_raw",
+    "table_structure_preset_raw",
+    "layout_preset_raw",
+    "picture_classification_preset_raw",
+    "chunking_preset_raw",
+    "chart_extraction_preset_raw",
+    "torch_dtype_raw",
+    "passes_raw",
+    "triple_regions_raw",
+    "numbering_schemes_raw",
 }
 
 _WRAPPER_MEMBER_NAMES: set[str] = {
@@ -511,7 +569,7 @@ def _resolve_forward_ref(tp: Any) -> Any:
     return tp
 
 
-def _normalize_pydantic_type(tp: Any) -> str:
+def _normalize_pydantic_type(tp: Any) -> str:  # noqa: C901
     """Return a canonical string for a Pydantic type annotation."""
     tp = _unwrap_annotated(tp)
     tp = _resolve_forward_ref(tp)
@@ -600,7 +658,7 @@ def _normalize_pydantic_type(tp: Any) -> str:
     return str(tp)
 
 
-def _collect_pydantic_fields(
+def _collect_pydantic_fields(  # noqa: C901
     model_cls: Any,
     prefix: str = "",
     max_depth: Optional[int] = None,
@@ -808,7 +866,7 @@ def _normalize_proto_field(field: descriptor_mod.FieldDescriptor) -> str:
     return base
 
 
-def _collect_proto_fields(
+def _collect_proto_fields(  # noqa: C901
     descriptor: descriptor_mod.Descriptor,
     prefix: str = "",
     max_depth: Optional[int] = None,
@@ -908,7 +966,9 @@ def _collect_proto_fields(
 # ---------------------------------------------------------------------------
 # Type compatibility (spec §5)
 # ---------------------------------------------------------------------------
-def _types_compatible(pydantic_canonical: str, proto_canonical: str) -> bool:
+def _types_compatible(  # noqa: C901
+    pydantic_canonical: str, proto_canonical: str
+) -> bool:
     """Return True if the two canonical types are compatible."""
     if pydantic_canonical == proto_canonical:
         return True
@@ -1075,11 +1135,11 @@ def _resolve_alias(path: str, fields: dict[str, str]) -> Optional[str]:
     alias = _FIELD_NAME_ALIASES.get(last)
     if not alias:
         return None
-    candidate = ".".join(parts[:-1] + [alias])
+    candidate = ".".join([*parts[:-1], alias])
     return candidate if candidate in fields else None
 
 
-def _compare_fields(
+def _compare_fields(  # noqa: C901
     pydantic_fields: dict[str, str],
     proto_fields: dict[str, str],
     context: str,

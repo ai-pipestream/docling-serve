@@ -1,4 +1,5 @@
 import pytest
+
 from docling.datamodel.base_models import InputFormat, OutputFormat
 from docling.datamodel.pipeline_options import (
     PdfBackend,
@@ -10,9 +11,6 @@ from docling.datamodel.pipeline_options_vlm_model import (
     ResponseFormat,
     TransformersModelType,
 )
-from docling.datamodel.vlm_model_specs import VlmModelType
-from docling_core.types.doc import ImageRefMode
-from docling_core.types.doc.labels import PictureClassificationLabel
 from docling.datamodel.service.requests import (
     FileSourceRequest,
     HttpSourceRequest,
@@ -27,6 +25,9 @@ from docling.datamodel.service.targets import (
     S3Target,
     ZipTarget,
 )
+from docling.datamodel.vlm_model_specs import VlmModelType
+from docling_core.types.doc import ImageRefMode
+from docling_core.types.doc.labels import PictureClassificationLabel
 from docling_jobkit.datamodel.chunking import HybridChunkerOptions
 
 from docling_serve.grpc.gen.ai.docling.core.v1 import docling_document_pb2
@@ -39,8 +40,8 @@ from docling_serve.grpc.mapping import (
     _map_ocr_engine,
     _map_output_format,
     _map_pdf_backend,
-    _map_pipeline,
     _map_picture_classification_labels,
+    _map_pipeline,
     _map_response_format,
     _map_table_mode,
     _map_transformers_model_type,
@@ -731,9 +732,9 @@ def test_to_convert_options_full():
 def test_to_convert_options_new_presets():
     options = docling_serve_types_pb2.ConvertDocumentOptions(
         do_chart_extraction=True,
-        vlm_pipeline_preset="vlm-default",
-        picture_description_preset="pd-default",
-        code_formula_preset="cf-default",
+        vlm_pipeline_preset_raw="vlm-default",
+        picture_description_preset_raw="pd-default",
+        code_formula_preset_raw="cf-default",
     )
 
     mapped = to_convert_options(options)
@@ -764,10 +765,10 @@ def test_to_convert_options_new_custom_configs():
 
 def test_to_convert_options_new_pipeline_presets():
     options = docling_serve_types_pb2.ConvertDocumentOptions(
-        ocr_preset="ocr-default",
-        table_structure_preset="ts-default",
-        layout_preset="layout-default",
-        picture_classification_preset="pc-default",
+        ocr_preset_raw="ocr-default",
+        table_structure_preset_raw="ts-default",
+        layout_preset_raw="layout-default",
+        picture_classification_preset_raw="pc-default",
     )
 
     mapped = to_convert_options(options)
@@ -886,7 +887,10 @@ def test_to_convert_options_heading_hierarchy():
             use_bookmarks=True,
             use_numbering=False,
             use_style=True,
-            numbering_schemes=["arabic", "alpha_l"],
+            numbering_schemes=[
+                docling_serve_types_pb2.NUMBERING_SCHEME_ARABIC,
+                docling_serve_types_pb2.NUMBERING_SCHEME_ALPHA_L,
+            ],
             max_level=4,
             bookmark_match_threshold=0.9,
             use_font_style=False,
@@ -1374,7 +1378,7 @@ def test_to_convert_options_chunking_preset_and_oneof():
     preset = to_convert_options(
         docling_serve_types_pb2.ConvertDocumentOptions(
             to_formats=[docling_serve_types_pb2.OUTPUT_FORMAT_CHUNKS],
-            chunking_preset="granite_embedding_278m",
+            chunking_preset=docling_serve_types_pb2.CHUNKING_PRESET_GRANITE_EMBEDDING_278M,
         )
     )
     assert preset.chunking_preset == "granite_embedding_278m"
@@ -1407,7 +1411,7 @@ def test_to_convert_options_preset_and_options_are_mutually_exclusive():
     with pytest.raises(ValueError, match="chunking_preset and chunking_options"):
         to_convert_options(
             docling_serve_types_pb2.ConvertDocumentOptions(
-                chunking_preset="granite_embedding_278m",
+                chunking_preset=docling_serve_types_pb2.CHUNKING_PRESET_GRANITE_EMBEDDING_278M,
                 hybrid_chunking=docling_serve_types_pb2.HybridChunkerOptions(),
             )
         )
@@ -1571,11 +1575,11 @@ def test_confidence_scores_from_proto_rejects_unknown_grade_raw():
 
 def test_profiling_item_maps_full_samples_alongside_totals():
     from datetime import datetime, timezone
+    from types import SimpleNamespace
 
     from docling.datamodel.base_models import ConversionStatus
     from docling.datamodel.service.responses import DocumentResultItem
     from docling.utils.profiling import ProfilingItem, ProfilingScope
-    from types import SimpleNamespace
 
     from docling_serve.grpc.mapping import convert_result_to_proto
 
@@ -1857,20 +1861,22 @@ def _chart_extraction_config(**overrides):
 
 def test_chart_extraction_preset_and_custom_config_are_exclusive():
     preset = docling_serve_types_pb2.ConvertDocumentOptions(
-        chart_extraction_preset="granite_vision_v4"
+        chart_extraction_preset=docling_serve_types_pb2.CHART_EXTRACTION_PRESET_GRANITE_VISION_V4
     )
     mapped = to_convert_options(preset)
     assert mapped.chart_extraction_preset == "granite_vision_v4"
 
     with pytest.raises(ValueError, match="empty"):
         to_convert_options(
-            docling_serve_types_pb2.ConvertDocumentOptions(chart_extraction_preset="")
+            docling_serve_types_pb2.ConvertDocumentOptions(
+                chart_extraction_preset_raw=""
+            )
         )
 
     with pytest.raises(ValueError, match="both chart_extraction_preset"):
         to_convert_options(
             docling_serve_types_pb2.ConvertDocumentOptions(
-                chart_extraction_preset="granite_vision_v4",
+                chart_extraction_preset=docling_serve_types_pb2.CHART_EXTRACTION_PRESET_GRANITE_VISION_V4,
                 chart_extraction_custom_config=_chart_extraction_config(),
             )
         )
@@ -1979,13 +1985,17 @@ def test_s3_credentials_are_paired():
 def test_caption_placement_reexports_markdown_and_rejects_unspecified():
     from types import SimpleNamespace
 
-    from docling_core.types.doc.base import BoundingBox, CoordOrigin, Size
+    from docling_core.types.doc.base import (
+        BoundingBox,
+        CaptionPlacement,
+        CoordOrigin,
+        Size,
+    )
     from docling_core.types.doc.document import (
         DocItemLabel,
         DoclingDocument,
         ProvenanceItem,
     )
-    from docling_core.types.doc.base import CaptionPlacement
 
     from docling_serve.grpc.mapping import caption_placement_from_options
 

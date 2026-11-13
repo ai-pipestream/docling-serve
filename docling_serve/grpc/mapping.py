@@ -17,6 +17,7 @@ from docling.datamodel.base_models import (
 from docling.datamodel.pipeline_options import (
     CodeFormulaVlmOptions,
     HeadingHierarchyOptions,
+    NemotronParseOptions,
     PdfBackend,
     PictureDescriptionVlmEngineOptions,
     ProcessingPipeline,
@@ -112,6 +113,134 @@ from .ocr_mapping import apply_typed_ocr_options
 
 _log = logging.getLogger(__name__)
 
+# Enum names whose lowercased suffix is not the registry id.
+_PRESET_NAME_OVERRIDES = {
+    "OCR_PRESET_NEMOTRON_OCR": "nemotron-ocr",
+}
+
+_PRESET_SPECS: tuple[tuple[str, object, str], ...] = (
+    (
+        "vlm_pipeline_preset",
+        docling_serve_types_pb2.VlmPipelinePreset,
+        "VLM_PIPELINE_PRESET_",
+    ),
+    (
+        "picture_description_preset",
+        docling_serve_types_pb2.PictureDescriptionPreset,
+        "PICTURE_DESCRIPTION_PRESET_",
+    ),
+    (
+        "code_formula_preset",
+        docling_serve_types_pb2.CodeFormulaPreset,
+        "CODE_FORMULA_PRESET_",
+    ),
+    ("ocr_preset", docling_serve_types_pb2.OcrPreset, "OCR_PRESET_"),
+    (
+        "table_structure_preset",
+        docling_serve_types_pb2.TableStructurePreset,
+        "TABLE_STRUCTURE_PRESET_",
+    ),
+    ("layout_preset", docling_serve_types_pb2.LayoutPreset, "LAYOUT_PRESET_"),
+    (
+        "picture_classification_preset",
+        docling_serve_types_pb2.PictureClassificationPreset,
+        "PICTURE_CLASSIFICATION_PRESET_",
+    ),
+    ("chunking_preset", docling_serve_types_pb2.ChunkingPreset, "CHUNKING_PRESET_"),
+    (
+        "chart_extraction_preset",
+        docling_serve_types_pb2.ChartExtractionPreset,
+        "CHART_EXTRACTION_PRESET_",
+    ),
+)
+
+
+def _tag_to_value(enum_cls, prefix: str) -> dict[int, str]:
+    values: dict[int, str] = {}
+    for name, number in enum_cls.items():
+        if number == 0:
+            continue
+        values[number] = _PRESET_NAME_OVERRIDES.get(
+            name, name.removeprefix(prefix).lower()
+        )
+    return values
+
+
+def _closed_string(
+    proto,
+    field: str,
+    tag_to_value: dict[int, str],
+    *,
+    raw_field: Optional[str] = None,
+) -> Optional[str]:
+    """Resolve an optional enum plus its ``*_raw`` companion to one string.
+
+    A known tag wins and must agree with raw when both are set. An unknown
+    non-zero tag returns raw. Tag 0 with raw returns raw. An empty raw string
+    is an error. Absent on both sides returns None so the model default stays.
+    """
+    raw_name = raw_field or f"{field}_raw"
+    has_enum = proto.HasField(field)
+    has_raw = proto.HasField(raw_name)
+    raw = getattr(proto, raw_name) if has_raw else None
+    if has_raw and raw == "":
+        raise ValueError(f"{field}_raw is empty")
+    if not has_enum:
+        return raw
+    tag = getattr(proto, field)
+    if tag == 0:
+        return raw
+    value = tag_to_value.get(tag)
+    if value is None:
+        if raw:
+            return raw
+        raise ValueError(f"{field} tag {tag} is unknown and {field}_raw is absent")
+    if raw is not None and raw != value:
+        raise ValueError(f"{field} and {field}_raw disagree")
+    return value
+
+
+def _preset_from_proto(proto, field: str) -> Optional[str]:
+    for name, enum_cls, prefix in _PRESET_SPECS:
+        if name == field:
+            return _closed_string(proto, field, _tag_to_value(enum_cls, prefix))
+    raise KeyError(field)
+
+
+def _has_preset(proto, field: str) -> bool:
+    return proto.HasField(field) or proto.HasField(f"{field}_raw")
+
+
+_TORCH_DTYPE_FROM_PROTO = {
+    docling_serve_types_pb2.TORCH_DTYPE_FLOAT32: "float32",
+    docling_serve_types_pb2.TORCH_DTYPE_FLOAT16: "float16",
+    docling_serve_types_pb2.TORCH_DTYPE_BFLOAT16: "bfloat16",
+}
+
+_NEMOTRON_PASSES_FROM_PROTO = {
+    docling_serve_types_pb2.NEMOTRON_PARSE_PASSES_SINGLE: "single",
+    docling_serve_types_pb2.NEMOTRON_PARSE_PASSES_DOUBLE: "double",
+    docling_serve_types_pb2.NEMOTRON_PARSE_PASSES_TRIPLE: "triple",
+}
+
+_NEMOTRON_REGIONS_FROM_PROTO = {
+    docling_serve_types_pb2.NEMOTRON_PARSE_TRIPLE_REGIONS_DETECTOR: "detector",
+    docling_serve_types_pb2.NEMOTRON_PARSE_TRIPLE_REGIONS_UNION: "union",
+}
+
+_NUMBERING_SCHEME_FROM_PROTO = {
+    docling_serve_types_pb2.NUMBERING_SCHEME_PART: "part",
+    docling_serve_types_pb2.NUMBERING_SCHEME_CHAPTER: "chapter",
+    docling_serve_types_pb2.NUMBERING_SCHEME_DIVISION: "division",
+    docling_serve_types_pb2.NUMBERING_SCHEME_SUBDIVISION: "subdivision",
+    docling_serve_types_pb2.NUMBERING_SCHEME_ARTICLE: "article",
+    docling_serve_types_pb2.NUMBERING_SCHEME_ROMAN_U: "roman_u",
+    docling_serve_types_pb2.NUMBERING_SCHEME_ARABIC: "arabic",
+    docling_serve_types_pb2.NUMBERING_SCHEME_ALPHA_U: "alpha_u",
+    docling_serve_types_pb2.NUMBERING_SCHEME_ALPHA_L: "alpha_l",
+    docling_serve_types_pb2.NUMBERING_SCHEME_ROMAN_L: "roman_l",
+}
+
 
 # -------------------- Proto -> Python domain --------------------
 
@@ -166,6 +295,7 @@ def _map_input_format(value: int) -> Optional[InputFormat]:
         "INPUT_FORMAT_RTF": InputFormat.RTF,
         "INPUT_FORMAT_MHTML": InputFormat.MHTML,
         "INPUT_FORMAT_AFP": InputFormat.AFP,
+        "INPUT_FORMAT_CALENDAR": InputFormat.CALENDAR,
     }
     return mapping.get(name)
 
@@ -321,10 +451,8 @@ def _apply_response_format(data: dict, proto, *, field_label: str) -> None:
         return
     mapped = _map_response_format(proto.response_format)
     if mapped is None:
-        if (
-            proto.response_format == docling_serve_types_pb2.RESPONSE_FORMAT_UNSPECIFIED
-            and raw
-        ):
+        # Unknown non-zero tags keep response_format_raw when the client sent it.
+        if raw:
             data["response_format"] = raw
             return
         if proto.response_format == docling_serve_types_pb2.RESPONSE_FORMAT_UNSPECIFIED:
@@ -540,8 +668,9 @@ def _to_engine_model_config(proto) -> EngineModelConfig:
         data["repo_id"] = proto.repo_id
     if proto.HasField("revision"):
         data["revision"] = proto.revision
-    if proto.HasField("torch_dtype"):
-        data["torch_dtype"] = proto.torch_dtype
+    torch_dtype = _closed_string(proto, "torch_dtype", _TORCH_DTYPE_FROM_PROTO)
+    if torch_dtype is not None:
+        data["torch_dtype"] = torch_dtype
     if proto.extra_config:
         data["extra_config"] = _scalar_map_to_dict(proto.extra_config)
     return EngineModelConfig.model_validate(data)
@@ -639,7 +768,22 @@ def _to_vlm_convert_options(proto) -> VlmConvertOptions:
         data["batch_size"] = proto.batch_size
     if proto.HasField("force_backend_text"):
         data["force_backend_text"] = proto.force_backend_text
+    if proto.HasField("nemotron_parse"):
+        data["nemotron_parse"] = _to_nemotron_parse_options(proto.nemotron_parse)
     return VlmConvertOptions.model_validate(data)
+
+
+def _to_nemotron_parse_options(proto) -> NemotronParseOptions:
+    data: dict = {}
+    passes = _closed_string(proto, "passes", _NEMOTRON_PASSES_FROM_PROTO)
+    if passes is not None:
+        data["passes"] = passes
+    regions = _closed_string(proto, "triple_regions", _NEMOTRON_REGIONS_FROM_PROTO)
+    if regions is not None:
+        data["triple_regions"] = regions
+    if proto.HasField("crop_batch_size"):
+        data["crop_batch_size"] = proto.crop_batch_size
+    return NemotronParseOptions.model_validate(data)
 
 
 def _to_picture_description_vlm_engine_options(
@@ -692,7 +836,7 @@ def _to_code_formula_vlm_options(proto) -> CodeFormulaVlmOptions:
     return CodeFormulaVlmOptions.model_validate(data)
 
 
-def _to_chart_extraction_vlm_engine_options(proto):
+def _to_chart_extraction_vlm_engine_options(proto):  # noqa: C901
     from docling.datamodel.chart_extraction_options import (
         ChartExtractionOutputFormat,
         ChartExtractionVlmEngineOptions,
@@ -840,7 +984,9 @@ def _s3_credential_fields(message, label: str) -> dict:
     }
 
 
-def to_task_sources(proto_sources: Iterable[docling_serve_types_pb2.Source]):
+def to_task_sources(  # noqa: C901
+    proto_sources: Iterable[docling_serve_types_pb2.Source],
+):
     sources = []
     for i, source in enumerate(proto_sources):
         kind = source.WhichOneof("source")
@@ -928,7 +1074,9 @@ def to_task_sources(proto_sources: Iterable[docling_serve_types_pb2.Source]):
     return sources
 
 
-def to_task_target(proto_target: Optional[docling_serve_types_pb2.Target]):
+def to_task_target(  # noqa: C901
+    proto_target: Optional[docling_serve_types_pb2.Target],
+):
     if proto_target is None:
         return InBodyTarget()
     kind = proto_target.WhichOneof("target")
@@ -1070,7 +1218,7 @@ def caption_placement_from_options(
     raise ValueError("caption_placement is unspecified or unknown")
 
 
-def to_convert_options(
+def to_convert_options(  # noqa: C901
     proto_options: Optional[docling_serve_types_pb2.ConvertDocumentOptions],
 ) -> ConvertDocumentsRequestOptions:
     data: dict[str, object] = {}
@@ -1246,14 +1394,14 @@ def to_convert_options(
     if proto_options.HasField("do_chart_extraction"):
         data["do_chart_extraction"] = proto_options.do_chart_extraction
 
-    if proto_options.HasField("vlm_pipeline_preset"):
-        data["vlm_pipeline_preset"] = proto_options.vlm_pipeline_preset
-
-    if proto_options.HasField("picture_description_preset"):
-        data["picture_description_preset"] = proto_options.picture_description_preset
-
-    if proto_options.HasField("code_formula_preset"):
-        data["code_formula_preset"] = proto_options.code_formula_preset
+    for preset_field in (
+        "vlm_pipeline_preset",
+        "picture_description_preset",
+        "code_formula_preset",
+    ):
+        preset_id = _preset_from_proto(proto_options, preset_field)
+        if preset_id is not None:
+            data[preset_field] = preset_id
 
     if proto_options.HasField("vlm_pipeline_custom_config"):
         data["vlm_pipeline_custom_config"] = _to_vlm_convert_options(
@@ -1272,7 +1420,7 @@ def to_convert_options(
             proto_options.code_formula_custom_config
         )
 
-    has_chart_preset = proto_options.HasField("chart_extraction_preset")
+    has_chart_preset = _has_preset(proto_options, "chart_extraction_preset")
     has_chart_config = proto_options.HasField("chart_extraction_custom_config")
     if has_chart_preset and has_chart_config:
         raise ValueError(
@@ -1280,9 +1428,10 @@ def to_convert_options(
             "chart_extraction_custom_config."
         )
     if has_chart_preset:
-        if not proto_options.chart_extraction_preset:
+        chart_preset = _preset_from_proto(proto_options, "chart_extraction_preset")
+        if not chart_preset:
             raise ValueError("chart_extraction_preset is empty")
-        data["chart_extraction_preset"] = proto_options.chart_extraction_preset
+        data["chart_extraction_preset"] = chart_preset
     if has_chart_config:
         data["chart_extraction_custom_config"] = (
             _to_chart_extraction_vlm_engine_options(
@@ -1303,9 +1452,7 @@ def to_convert_options(
     ocr_engine = None
     if proto_options.HasField("ocr_engine"):
         ocr_engine = _map_ocr_engine(proto_options.ocr_engine)
-    ocr_preset = (
-        proto_options.ocr_preset if proto_options.HasField("ocr_preset") else None
-    )
+    ocr_preset = _preset_from_proto(proto_options, "ocr_preset")
     ocr_custom = (
         _scalar_map_to_dict(proto_options.ocr_custom_config)
         if proto_options.ocr_custom_config
@@ -1328,16 +1475,14 @@ def to_convert_options(
         if ocr_custom:
             data["ocr_custom_config"] = ocr_custom
 
-    if proto_options.HasField("table_structure_preset"):
-        data["table_structure_preset"] = proto_options.table_structure_preset
-
-    if proto_options.HasField("layout_preset"):
-        data["layout_preset"] = proto_options.layout_preset
-
-    if proto_options.HasField("picture_classification_preset"):
-        data["picture_classification_preset"] = (
-            proto_options.picture_classification_preset
-        )
+    for preset_field in (
+        "table_structure_preset",
+        "layout_preset",
+        "picture_classification_preset",
+    ):
+        preset_id = _preset_from_proto(proto_options, preset_field)
+        if preset_id is not None:
+            data[preset_field] = preset_id
 
     if proto_options.picture_classification_custom_config:
         data["picture_classification_custom_config"] = _scalar_map_to_dict(
@@ -1355,8 +1500,9 @@ def to_convert_options(
             proto_options.pdf_heading_hierarchy_options
         )
 
-    if proto_options.HasField("chunking_preset"):
-        data["chunking_preset"] = proto_options.chunking_preset
+    chunking_preset = _preset_from_proto(proto_options, "chunking_preset")
+    if chunking_preset is not None:
+        data["chunking_preset"] = chunking_preset
 
     chunking_arm = proto_options.WhichOneof("chunking_options")
     if chunking_arm == "hierarchical_chunking":
@@ -1374,6 +1520,39 @@ def to_convert_options(
     )
 
 
+def _numbering_schemes_from_proto(proto) -> list[str]:
+    """Map numbering_schemes plus numbering_schemes_raw to family ids.
+
+    Enum tags are the typed path. An unknown tag keeps the raw string at the
+    same index. Raw alone is the whole list, including schemes this enum does
+    not name.
+    """
+    tags = list(proto.numbering_schemes)
+    raws = list(proto.numbering_schemes_raw)
+    if not tags:
+        return raws
+    schemes: list[str] = []
+    for index, tag in enumerate(tags):
+        if tag == 0:
+            raise ValueError("numbering_schemes contains UNSPECIFIED")
+        mapped = _NUMBERING_SCHEME_FROM_PROTO.get(tag)
+        companion = raws[index] if index < len(raws) else ""
+        if mapped is None:
+            if companion:
+                schemes.append(companion)
+                continue
+            raise ValueError(
+                f"numbering_schemes tag {tag} is unknown and "
+                "numbering_schemes_raw has no companion"
+            )
+        if companion and companion != mapped:
+            raise ValueError("numbering_schemes and numbering_schemes_raw disagree")
+        schemes.append(mapped)
+    if len(raws) > len(tags):
+        raise ValueError("numbering_schemes_raw is longer than numbering_schemes")
+    return schemes
+
+
 def _to_heading_hierarchy_options(
     proto: docling_serve_types_pb2.HeadingHierarchyOptions,
 ) -> HeadingHierarchyOptions:
@@ -1386,8 +1565,9 @@ def _to_heading_hierarchy_options(
         data["use_numbering"] = proto.use_numbering
     if proto.HasField("use_style"):
         data["use_style"] = proto.use_style
-    if proto.numbering_schemes:
-        data["numbering_schemes"] = list(proto.numbering_schemes)
+    numbering_schemes = _numbering_schemes_from_proto(proto)
+    if numbering_schemes:
+        data["numbering_schemes"] = numbering_schemes
     if proto.HasField("max_level"):
         data["max_level"] = proto.max_level
     if proto.HasField("bookmark_match_threshold"):
@@ -1608,6 +1788,7 @@ _ARTIFACT_TYPE_TO_PROTO = {
     "resource_bundle": (
         docling_serve_types_pb2.ArtifactType.ARTIFACT_TYPE_RESOURCE_BUNDLE
     ),
+    "chunks": docling_serve_types_pb2.ArtifactType.ARTIFACT_TYPE_CHUNKS,
 }
 
 _TASK_TYPE_TO_PROTO = {
@@ -1656,11 +1837,28 @@ _QUALITY_GRADE_FROM_PROTO = {
 def _quality_grade_from_proto(tag: int, raw: Optional[str], field: str) -> QualityGrade:
     """Inverse of the *_raw contract for QualityGrade.
 
-    A raw companion is only honoured when this docling build knows the value;
-    an unknown grade is rejected rather than silently mapped to UNSPECIFIED.
+    A known tag wins. An unknown non-zero tag keeps ``raw`` when that string is
+    a grade this build knows. A grade this build does not know is a ValueError
+    that names the raw string. It is not a KeyError on the tag.
     """
     if tag != 0:
-        return QualityGrade(_QUALITY_GRADE_FROM_PROTO[tag])
+        value = _QUALITY_GRADE_FROM_PROTO.get(tag)
+        if value is None:
+            if raw:
+                try:
+                    return QualityGrade(raw)
+                except ValueError as exc:
+                    raise ValueError(
+                        f"ConfidenceScores.{field} tag {tag} is unknown and "
+                        f"{field}_raw={raw!r} is not a QualityGrade"
+                    ) from exc
+            raise ValueError(
+                f"ConfidenceScores.{field} tag {tag} is unknown and "
+                f"{field}_raw is absent"
+            )
+        if raw is not None and raw != value:
+            raise ValueError(f"ConfidenceScores.{field} and {field}_raw disagree")
+        return QualityGrade(value)
     if raw:
         try:
             return QualityGrade(raw)
@@ -1772,7 +1970,7 @@ def _json_export(doc, target_document_version: Optional[str]) -> str:
     return json.dumps(projected, ensure_ascii=False)
 
 
-def _build_exports(
+def _build_exports(  # noqa: C901
     doc,
     requested_formats: Optional[set[OutputFormat]],
     caption_placement=None,
@@ -2188,4 +2386,4 @@ def with_single_use_cleanup(orchestrator, task_id: str) -> None:
         await asyncio.sleep(docling_serve_settings.result_removal_delay)
         await orchestrator.delete_task(task_id=task_id)
 
-    asyncio.create_task(_remove_task_impl())
+    asyncio.create_task(_remove_task_impl())  # noqa: RUF006
