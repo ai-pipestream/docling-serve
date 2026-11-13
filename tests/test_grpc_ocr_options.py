@@ -427,7 +427,9 @@ def test_ocr_engine_and_preset_conflicts():
     assert "ocr_engine" not in matched.model_fields_set
 
     with pytest.raises(ValueError, match="ocr_preset"):
-        to_convert_options(_options(ocr_preset="easyocr", easyocr=pb2.EasyOcrOptions()))
+        to_convert_options(
+            _options(ocr_preset=pb2.OCR_PRESET_EASYOCR, easyocr=pb2.EasyOcrOptions())
+        )
 
 
 def test_ocr_lang_fills_unset_typed_lang_and_conflicts_when_both_set():

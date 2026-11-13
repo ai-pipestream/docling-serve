@@ -111,6 +111,51 @@ ALLOWED_COERCIONS: dict[str, tuple[str, str]] = {
     ),
     # ProgressTaskCompleted.task_status is Literal["success", "failure"].
     "ProgressTaskCompleted.task_status": ("string", "enum:TaskStatus"),
+    # Preset ids are strings on ConvertDocumentsOptions and per-family enums
+    # on the wire. Unknown ids stay on the *_raw companion.
+    "vlm_pipeline_preset": (
+        "optional<string>",
+        "optional<enum:VlmPipelinePreset>",
+    ),
+    "picture_description_preset": (
+        "optional<string>",
+        "optional<enum:PictureDescriptionPreset>",
+    ),
+    "code_formula_preset": (
+        "optional<string>",
+        "optional<enum:CodeFormulaPreset>",
+    ),
+    "ocr_preset": ("string", "optional<enum:OcrPreset>"),
+    "table_structure_preset": (
+        "optional<string>",
+        "optional<enum:TableStructurePreset>",
+    ),
+    "layout_preset": ("optional<string>", "optional<enum:LayoutPreset>"),
+    "picture_classification_preset": (
+        "optional<string>",
+        "optional<enum:PictureClassificationPreset>",
+    ),
+    "chunking_preset": ("optional<string>", "optional<enum:ChunkingPreset>"),
+    "chart_extraction_preset": (
+        "optional<string>",
+        "optional<enum:ChartExtractionPreset>",
+    ),
+    "EngineModelConfig.torch_dtype": (
+        "optional<string>",
+        "optional<enum:TorchDtype>",
+    ),
+    "NemotronParseOptions.passes": (
+        "string",
+        "optional<enum:NemotronParsePasses>",
+    ),
+    "NemotronParseOptions.triple_regions": (
+        "string",
+        "optional<enum:NemotronParseTripleRegions>",
+    ),
+    "**.numbering_schemes": (
+        "optional<list<string>>",
+        "list<enum:NumberingScheme>",
+    ),
 }
 
 # Pydantic models whose proto counterpart carries a different message name.
@@ -300,6 +345,106 @@ _PROTO_ONLY_PREFIXES: set[str] = {
     "chart_data.grid",
 }
 
+# Entry-point field names of the docling-core wire extensions.
+# docling-core proto/ai/docling/core/v1/PARITY.md ("Wire Schema Extensions")
+# lists these as additive fields the Pydantic dialect has no slot for.
+# proto_to_docling_document absorbs them on purpose. A path is this noise
+# when any segment is one of these names; every other proto-only path still
+# warns. Children of an extension message are covered because the path
+# passes through the entry-point name.
+_WIRE_EXTENSION_FIELDS: frozenset[str] = frozenset(
+    {
+        # DoclingDocument
+        "source_meta",
+        "attachments",
+        "outline",
+        "meta_tags",
+        "structured_data",
+        "media",
+        "changes",
+        "anchors",
+        "email",
+        "page_styles",
+        "named_ranges",
+        "pivots",
+        "claims",
+        # DocumentOrigin
+        "web",
+        "source_id",
+        "mimetype_evidence",
+        "field_sources",
+        # ProvenanceItem
+        "time",
+        "byte_range",
+        "grid",
+        "polygon",
+        "line_range",
+        # TextItemBase / CodeItem / GroupItem
+        "spans",
+        "admonition_kind",
+        "label_raw",
+        "style_name",
+        "comment_meta",
+        "shape",
+        "footnote_meta",
+        "index_meta",
+        "raw",
+        "source_element_name",
+        "source_namespace",
+        "sheet",
+        # Formatting
+        "monospace",
+        "small_caps",
+        "math",
+        "mark",
+        "small",
+        "insertion",
+        "abbreviation",
+        "quote",
+        "overline",
+        # TableCell / TableData
+        "value",
+        "align",
+        "valign",
+        "columns",
+        "row_prov",
+        "record_layout",
+        # PageItem
+        "unit",
+        "quality",
+        "page_label",
+        "media_size",
+        "user_unit",
+        # PictureItem / ImageRef / PictureMeta / BaseMeta
+        "hyperlink",
+        "target",
+        "chart",
+        "size_raw",
+        "accessibility_title",
+        "alternatives",
+        # FieldItem
+        "field_name",
+        "options",
+        "selected_index",
+        "span",
+        "parameters",
+        # SourceType / PictureAnnotation
+        "collector",
+        "generation",
+        "barcode",
+    }
+)
+
+
+def _is_documented_wire_extension(path: str) -> bool:
+    """True when *path* enters a PARITY.md wire extension field."""
+    segments = path.split(".")
+    # Wrapper walks prefix the proto message name (TextItem.spans...).
+    if segments and segments[0][:1].isupper():
+        segments = segments[1:]
+    return any(segment in _WIRE_EXTENSION_FIELDS for segment in segments)
+
+
 # Proto field names that enrich a Pydantic source already represented under a
 # different wire name (or that REST omits while jobkit still carries). Matched
 # at any nesting depth so Document.profiling and documents.profiling both pass.
@@ -409,6 +554,19 @@ _RAW_FALLBACK_SUFFIXES: set[str] = {
     "model_size_raw",
     "merge_level_raw",
     "transport_raw",
+    "vlm_pipeline_preset_raw",
+    "picture_description_preset_raw",
+    "code_formula_preset_raw",
+    "ocr_preset_raw",
+    "table_structure_preset_raw",
+    "layout_preset_raw",
+    "picture_classification_preset_raw",
+    "chunking_preset_raw",
+    "chart_extraction_preset_raw",
+    "torch_dtype_raw",
+    "passes_raw",
+    "triple_regions_raw",
+    "numbering_schemes_raw",
 }
 
 _WRAPPER_MEMBER_NAMES: set[str] = {
@@ -511,7 +669,7 @@ def _resolve_forward_ref(tp: Any) -> Any:
     return tp
 
 
-def _normalize_pydantic_type(tp: Any) -> str:
+def _normalize_pydantic_type(tp: Any) -> str:  # noqa: C901
     """Return a canonical string for a Pydantic type annotation."""
     tp = _unwrap_annotated(tp)
     tp = _resolve_forward_ref(tp)
@@ -600,7 +758,7 @@ def _normalize_pydantic_type(tp: Any) -> str:
     return str(tp)
 
 
-def _collect_pydantic_fields(
+def _collect_pydantic_fields(  # noqa: C901
     model_cls: Any,
     prefix: str = "",
     max_depth: Optional[int] = None,
@@ -808,7 +966,7 @@ def _normalize_proto_field(field: descriptor_mod.FieldDescriptor) -> str:
     return base
 
 
-def _collect_proto_fields(
+def _collect_proto_fields(  # noqa: C901
     descriptor: descriptor_mod.Descriptor,
     prefix: str = "",
     max_depth: Optional[int] = None,
@@ -908,7 +1066,9 @@ def _collect_proto_fields(
 # ---------------------------------------------------------------------------
 # Type compatibility (spec §5)
 # ---------------------------------------------------------------------------
-def _types_compatible(pydantic_canonical: str, proto_canonical: str) -> bool:
+def _types_compatible(  # noqa: C901
+    pydantic_canonical: str, proto_canonical: str
+) -> bool:
     """Return True if the two canonical types are compatible."""
     if pydantic_canonical == proto_canonical:
         return True
@@ -1075,11 +1235,11 @@ def _resolve_alias(path: str, fields: dict[str, str]) -> Optional[str]:
     alias = _FIELD_NAME_ALIASES.get(last)
     if not alias:
         return None
-    candidate = ".".join(parts[:-1] + [alias])
+    candidate = ".".join([*parts[:-1], alias])
     return candidate if candidate in fields else None
 
 
-def _compare_fields(
+def _compare_fields(  # noqa: C901
     pydantic_fields: dict[str, str],
     proto_fields: dict[str, str],
     context: str,
@@ -1212,11 +1372,24 @@ def validate_docling_document_schema() -> None:
             len(missing_proto),
             ", ".join(missing_proto),
         )
-    if missing_pydantic:
+    extension_paths = [
+        path for path in missing_pydantic if _is_documented_wire_extension(path)
+    ]
+    unexpected_proto = [
+        path for path in missing_pydantic if path not in extension_paths
+    ]
+    if extension_paths:
+        _log.info(
+            "DoclingDocument wire extensions absorbed (%d paths). "
+            "These are the docling-core PARITY.md wire extensions; "
+            "the Pydantic model has no slot for them.",
+            len(extension_paths),
+        )
+    if unexpected_proto:
         _log.warning(
             "Fields in proto but not in Pydantic (%d): %s",
-            len(missing_pydantic),
-            ", ".join(missing_pydantic),
+            len(unexpected_proto),
+            ", ".join(unexpected_proto),
         )
     if allowed:
         _log.info(

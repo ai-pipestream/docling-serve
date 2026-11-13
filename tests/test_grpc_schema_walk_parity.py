@@ -10,10 +10,13 @@ from __future__ import annotations
 import logging
 
 import pytest
+
 from docling.datamodel.service.options import ConvertDocumentsOptions
 from docling_core.types.doc.document import DoclingDocument
 
-from docling_serve.grpc.gen.ai.docling.serve.v1 import docling_serve_types_pb2 as serve_pb2
+from docling_serve.grpc.gen.ai.docling.serve.v1 import (
+    docling_serve_types_pb2 as serve_pb2,
+)
 from docling_serve.grpc.schema_validator import (
     _PROTO_ONLY_FIELD_NAMES,
     _RAW_FALLBACK_SUFFIXES,
@@ -72,13 +75,12 @@ def test_serve_and_document_schema_validators_pass(caplog):
         validate_serve_types_schema()
         validate_docling_document_schema()
     assert "Fields in Pydantic but not in proto" not in caplog.text
+    assert "Fields in proto but not in Pydantic" not in caplog.text
     assert "Serve fields in Pydantic but not in proto" not in caplog.text
 
 
 def test_convert_options_every_pydantic_field_is_on_proto_or_skipped():
-    proto_fields = {
-        f.name for f in serve_pb2.ConvertDocumentOptions.DESCRIPTOR.fields
-    }
+    proto_fields = {f.name for f in serve_pb2.ConvertDocumentOptions.DESCRIPTOR.fields}
     # oneof members appear as fields on the descriptor too
     missing = []
     for name in ConvertDocumentsOptions.model_fields:
@@ -106,9 +108,7 @@ def test_convert_options_documented_skips_still_exist_on_pydantic():
 
 
 def test_convert_options_proto_extras_are_present_and_listed():
-    proto_fields = {
-        f.name for f in serve_pb2.ConvertDocumentOptions.DESCRIPTOR.fields
-    }
+    proto_fields = {f.name for f in serve_pb2.ConvertDocumentOptions.DESCRIPTOR.fields}
     for name in CONVERT_OPTIONS_PROTO_EXTRAS:
         assert name in proto_fields, name
     # Every OCR arm must be listed as a proto extra
