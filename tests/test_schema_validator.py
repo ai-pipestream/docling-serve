@@ -11,6 +11,7 @@ import pytest
 from docling_serve.grpc.schema_validator import (
     _check_cardinality,
     _is_coercion_allowed,
+    _is_documented_wire_extension,
     _types_compatible,
     validate_docling_document_schema,
     validate_serve_types_schema,
@@ -110,10 +111,23 @@ def test_message_name_equivalences_and_union_wrapper_compat():
 
 
 def test_no_warnings_on_current_schemas(caplog):
-    """Every Pydantic field must be on the proto. Fork extensions may be proto-only."""
+    """Every Pydantic field must be on the proto.
+
+    Documented wire extensions are absorbed at info. Any other proto-only
+    path is still a warning.
+    """
     with caplog.at_level(logging.WARNING):
         validate_docling_document_schema()
     assert "Fields in Pydantic but not in proto" not in caplog.text
+    assert "Fields in proto but not in Pydantic" not in caplog.text
+
+
+def test_wire_extension_paths_are_not_unexpected_gaps():
+    assert _is_documented_wire_extension("claims.email.from.address")
+    assert _is_documented_wire_extension("TextItem.comment_meta.author")
+    assert _is_documented_wire_extension("pictures.prov.time.end_ms")
+    assert not _is_documented_wire_extension("brand_new_field")
+    assert not _is_documented_wire_extension("TextItem.brand_new_field")
 
 
 def test_warns_on_missing_proto_field(caplog):

@@ -1,25 +1,71 @@
+"""Convert PDFs through a running docling-serve gRPC server.
+
+The PDF directory is ``DOCLING_E2E_PDF_DIR``. When that variable is unset,
+the test uses the PDFs shipped in this repo's ``tests/`` directory.
+``DOCLING_E2E_GRPC_TARGET`` overrides the server address (default
+``localhost:50051``).
+"""
+
+from __future__ import annotations
+
 import base64
 import os
 from pathlib import Path
 
 import grpc
 import pytest
-from docling_core.types.doc import DoclingDocument
-from docling_core.proto.gen.ai.docling.core.v1 import docling_document_pb2 as pb2
+
 from docling_serve.grpc.gen.ai.docling.serve.v1 import (
     docling_serve_pb2 as serve_pb2,
-)
-from docling_serve.grpc.gen.ai.docling.serve.v1 import (
     docling_serve_pb2_grpc as serve_pb2_grpc,
-)
-from docling_serve.grpc.gen.ai.docling.serve.v1 import (
     docling_serve_types_pb2 as types_pb2,
 )
 
-# Path to the docling repo tests data
-DOCLING_REPO_PDFS = Path("/work/docling_2953_grpc_server/tests/data/pdf/")
+SKIP_E2E_TEST = {"skipped_1page.pdf", "skipped_2pages.pdf"}
+_DEFAULT_PDF_DIR = Path(__file__).resolve().parent
 
-SKIP_E2E_TEST = ["skipped_1page.pdf", "skipped_2pages.pdf"]
+
+def pdf_dir() -> Path:
+    raw = os.environ.get("DOCLING_E2E_PDF_DIR")
+    if raw:
+        return Path(raw)
+    return _DEFAULT_PDF_DIR
+
+
+def grpc_target() -> str:
+    return os.environ.get("DOCLING_E2E_GRPC_TARGET", "localhost:50051")
+
+
+def get_pdf_paths() -> list[Path]:
+    root = pdf_dir()
+    if not root.is_dir():
+        return []
+    return sorted(
+        path
+        for path in root.rglob("*.pdf")
+        if path.name not in SKIP_E2E_TEST and path.is_file()
+    )
+
+
+def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
+    if "pdf_path" not in metafunc.fixturenames:
+        return
+    paths = get_pdf_paths()
+    if not paths:
+        metafunc.parametrize(
+            "pdf_path",
+            [
+                pytest.param(
+                    None,
+                    marks=pytest.mark.skip(
+                        reason=(f"No PDFs under {pdf_dir()} (set DOCLING_E2E_PDF_DIR)")
+                    ),
+                )
+            ],
+        )
+        return
+    metafunc.parametrize("pdf_path", paths, ids=lambda path: path.name)
+
 
 @pytest.fixture(scope="module")
 def grpc_stub():
@@ -28,49 +74,32 @@ def grpc_stub():
         ("grpc.max_send_message_length", 2 * 1024 * 1024 * 1024 - 1),
         ("grpc.max_receive_message_length", 2 * 1024 * 1024 * 1024 - 1),
     ]
-    channel = grpc.insecure_channel("localhost:50051", options=options)
+    channel = grpc.insecure_channel(grpc_target(), options=options)
     return serve_pb2_grpc.DoclingServeServiceStub(channel)
 
-def get_pdf_paths():
-    if not DOCLING_REPO_PDFS.exists():
-        return []
-    return sorted(
-        f for f in DOCLING_REPO_PDFS.rglob("*.pdf") if f.name not in SKIP_E2E_TEST
-    )
 
-@pytest.mark.parametrize("pdf_path", get_pdf_paths(), ids=lambda p: p.name)
-def test_convert_pdf_via_grpc(grpc_stub, pdf_path):
+def test_convert_pdf_via_grpc(grpc_stub, pdf_path: Path):
     print(f"Testing {pdf_path.name}")
-    
-    with open(pdf_path, "rb") as f:
-        b64 = base64.b64encode(f.read()).decode()
-    
+
+    payload = pdf_path.read_bytes()
     source = types_pb2.Source(
-        file=types_pb2.FileSource(base64_string=b64, filename=pdf_path.name)
-    )
-    
-    # Enable table structure and cell matching to exercise more logic
-    options = types_pb2.ConvertDocumentOptions(
-        do_table_structure=True,
-    )
-    
-    req = serve_pb2.ConvertSourceRequest(
-        request=types_pb2.ConvertDocumentRequest(
-            sources=[source],
-            options=options
+        file=types_pb2.FileSource(
+            base64_string=base64.b64encode(payload).decode(),
+            filename=pdf_path.name,
         )
     )
-    
-    resp = grpc_stub.ConvertSource(req)
-    
-    doc_proto = resp.response.document.doc
+    options = types_pb2.ConvertDocumentOptions(do_table_structure=True)
+    request = serve_pb2.ConvertSourceRequest(
+        request=types_pb2.ConvertDocumentRequest(
+            sources=[source],
+            options=options,
+        )
+    )
+
+    response = grpc_stub.ConvertSource(request)
+    doc_proto = response.response.document.doc
     assert doc_proto.schema_name == "DoclingDocument"
-    assert doc_proto.name  # Should have a name
-    
-    # Basic sanity checks on the content
+    assert doc_proto.name
     assert len(doc_proto.pages) >= 1
-    
-    # We should have at least some text items for these test PDFs
     assert len(doc_proto.texts) >= 1
-    
     print(f"  Result: {len(doc_proto.texts)} texts, {len(doc_proto.tables)} tables")

@@ -345,6 +345,106 @@ _PROTO_ONLY_PREFIXES: set[str] = {
     "chart_data.grid",
 }
 
+# Entry-point field names of the docling-core wire extensions.
+# docling-core proto/ai/docling/core/v1/PARITY.md ("Wire Schema Extensions")
+# lists these as additive fields the Pydantic dialect has no slot for.
+# proto_to_docling_document absorbs them on purpose. A path is this noise
+# when any segment is one of these names; every other proto-only path still
+# warns. Children of an extension message are covered because the path
+# passes through the entry-point name.
+_WIRE_EXTENSION_FIELDS: frozenset[str] = frozenset(
+    {
+        # DoclingDocument
+        "source_meta",
+        "attachments",
+        "outline",
+        "meta_tags",
+        "structured_data",
+        "media",
+        "changes",
+        "anchors",
+        "email",
+        "page_styles",
+        "named_ranges",
+        "pivots",
+        "claims",
+        # DocumentOrigin
+        "web",
+        "source_id",
+        "mimetype_evidence",
+        "field_sources",
+        # ProvenanceItem
+        "time",
+        "byte_range",
+        "grid",
+        "polygon",
+        "line_range",
+        # TextItemBase / CodeItem / GroupItem
+        "spans",
+        "admonition_kind",
+        "label_raw",
+        "style_name",
+        "comment_meta",
+        "shape",
+        "footnote_meta",
+        "index_meta",
+        "raw",
+        "source_element_name",
+        "source_namespace",
+        "sheet",
+        # Formatting
+        "monospace",
+        "small_caps",
+        "math",
+        "mark",
+        "small",
+        "insertion",
+        "abbreviation",
+        "quote",
+        "overline",
+        # TableCell / TableData
+        "value",
+        "align",
+        "valign",
+        "columns",
+        "row_prov",
+        "record_layout",
+        # PageItem
+        "unit",
+        "quality",
+        "page_label",
+        "media_size",
+        "user_unit",
+        # PictureItem / ImageRef / PictureMeta / BaseMeta
+        "hyperlink",
+        "target",
+        "chart",
+        "size_raw",
+        "accessibility_title",
+        "alternatives",
+        # FieldItem
+        "field_name",
+        "options",
+        "selected_index",
+        "span",
+        "parameters",
+        # SourceType / PictureAnnotation
+        "collector",
+        "generation",
+        "barcode",
+    }
+)
+
+
+def _is_documented_wire_extension(path: str) -> bool:
+    """True when *path* enters a PARITY.md wire extension field."""
+    segments = path.split(".")
+    # Wrapper walks prefix the proto message name (TextItem.spans...).
+    if segments and segments[0][:1].isupper():
+        segments = segments[1:]
+    return any(segment in _WIRE_EXTENSION_FIELDS for segment in segments)
+
+
 # Proto field names that enrich a Pydantic source already represented under a
 # different wire name (or that REST omits while jobkit still carries). Matched
 # at any nesting depth so Document.profiling and documents.profiling both pass.
@@ -1272,11 +1372,24 @@ def validate_docling_document_schema() -> None:
             len(missing_proto),
             ", ".join(missing_proto),
         )
-    if missing_pydantic:
+    extension_paths = [
+        path for path in missing_pydantic if _is_documented_wire_extension(path)
+    ]
+    unexpected_proto = [
+        path for path in missing_pydantic if path not in extension_paths
+    ]
+    if extension_paths:
+        _log.info(
+            "DoclingDocument wire extensions absorbed (%d paths). "
+            "These are the docling-core PARITY.md wire extensions; "
+            "the Pydantic model has no slot for them.",
+            len(extension_paths),
+        )
+    if unexpected_proto:
         _log.warning(
             "Fields in proto but not in Pydantic (%d): %s",
-            len(missing_pydantic),
-            ", ".join(missing_pydantic),
+            len(unexpected_proto),
+            ", ".join(unexpected_proto),
         )
     if allowed:
         _log.info(

@@ -13,7 +13,7 @@ async def async_client():
     headers = {}
     if docling_serve_settings.api_key:
         headers["X-Api-Key"] = docling_serve_settings.api_key
-    async with httpx.AsyncClient(timeout=60.0, headers=headers) as client:
+    async with httpx.AsyncClient(timeout=300.0, headers=headers) as client:
         yield client
 
 
