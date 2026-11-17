@@ -8,6 +8,8 @@ on that hand-over channel: the environment `_run` leaves behind, read back
 through a fresh `DoclingServeSettings()` exactly as the child builds it.
 """
 
+import os
+
 import pytest
 import uvicorn
 from typer.testing import CliRunner
@@ -22,7 +24,13 @@ DOCLING_ENV = ("DOCLING_SERVE_ENABLE_UI", "DOCLING_SERVE_ARTIFACTS_PATH")
 def run_cli(monkeypatch):
     """Invoke the real CLI with the server stubbed out, and isolate globals."""
     for name in DOCLING_ENV:
-        monkeypatch.delenv(name, raising=False)
+        # delenv(raising=False) records nothing when the name is absent, so a
+        # value the CLI writes into os.environ would leak into later tests.
+        if name in os.environ:
+            monkeypatch.delenv(name)
+        else:
+            monkeypatch.setenv(name, "")
+            monkeypatch.delenv(name)
     monkeypatch.setattr(
         docling_serve_settings, "enable_ui", DoclingServeSettings().enable_ui
     )
@@ -64,6 +72,18 @@ def test_workers_propagate_artifacts_path(run_cli, tmp_path):
     run_cli("run", "--workers", "2", "--artifacts-path", str(tmp_path))
 
     assert DoclingServeSettings().artifacts_path == tmp_path
+
+
+def test_workers_artifacts_path_does_not_outlive_the_test(
+    run_cli, tmp_path, monkeypatch
+):
+    """The CLI's env hand-over must be gone once the test's monkeypatch undoes."""
+    run_cli("run", "--workers", "2", "--artifacts-path", str(tmp_path))
+    assert os.environ["DOCLING_SERVE_ARTIFACTS_PATH"] == str(tmp_path)
+
+    monkeypatch.undo()
+
+    assert os.environ.get("DOCLING_SERVE_ARTIFACTS_PATH") != str(tmp_path)
 
 
 def test_single_process_run_leaves_the_environment_alone(run_cli, monkeypatch):

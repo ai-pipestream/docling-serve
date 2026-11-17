@@ -1,9 +1,11 @@
-"""Convert PDFs through a running docling-serve gRPC server.
+"""Convert PDFs through docling-serve gRPC.
 
 The PDF directory is ``DOCLING_E2E_PDF_DIR``. When that variable is unset,
 the test uses the PDFs shipped in this repo's ``tests/`` directory.
-``DOCLING_E2E_GRPC_TARGET`` overrides the server address (default
-``localhost:50051``).
+
+``DOCLING_E2E_GRPC_TARGET`` selects an already running server. When it is
+unset, the session fixture starts ``docling-serve-grpc`` on a free port and
+stops it when the session ends.
 """
 
 from __future__ import annotations
@@ -20,6 +22,11 @@ from docling_serve.grpc.gen.ai.docling.serve.v1 import (
     docling_serve_pb2_grpc as serve_pb2_grpc,
     docling_serve_types_pb2 as types_pb2,
 )
+from tests.e2e_grpc_harness import (
+    GrpcE2EServerError,
+    e2e_grpc_target_scope,
+    grpc_call_metadata,
+)
 
 SKIP_E2E_TEST = {"skipped_1page.pdf", "skipped_2pages.pdf"}
 _DEFAULT_PDF_DIR = Path(__file__).resolve().parent
@@ -30,10 +37,6 @@ def pdf_dir() -> Path:
     if raw:
         return Path(raw)
     return _DEFAULT_PDF_DIR
-
-
-def grpc_target() -> str:
-    return os.environ.get("DOCLING_E2E_GRPC_TARGET", "localhost:50051")
 
 
 def get_pdf_paths() -> list[Path]:
@@ -67,15 +70,28 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
     metafunc.parametrize("pdf_path", paths, ids=lambda path: path.name)
 
 
+@pytest.fixture(scope="session")
+def e2e_grpc_target():
+    """Ready ``host:port``. Starts docling-serve-grpc when no target is set."""
+    try:
+        with e2e_grpc_target_scope() as target:
+            yield target
+    except GrpcE2EServerError as exc:
+        pytest.fail(str(exc))
+
+
 @pytest.fixture(scope="module")
-def grpc_stub():
+def grpc_stub(e2e_grpc_target: str):
     # 2 GB message limits
     options = [
         ("grpc.max_send_message_length", 2 * 1024 * 1024 * 1024 - 1),
         ("grpc.max_receive_message_length", 2 * 1024 * 1024 * 1024 - 1),
     ]
-    channel = grpc.insecure_channel(grpc_target(), options=options)
-    return serve_pb2_grpc.DoclingServeServiceStub(channel)
+    channel = grpc.insecure_channel(e2e_grpc_target, options=options)
+    try:
+        yield serve_pb2_grpc.DoclingServeServiceStub(channel)
+    finally:
+        channel.close()
 
 
 def test_convert_pdf_via_grpc(grpc_stub, pdf_path: Path):
@@ -96,7 +112,7 @@ def test_convert_pdf_via_grpc(grpc_stub, pdf_path: Path):
         )
     )
 
-    response = grpc_stub.ConvertSource(request)
+    response = grpc_stub.ConvertSource(request, metadata=grpc_call_metadata())
     doc_proto = response.response.document.doc
     assert doc_proto.schema_name == "DoclingDocument"
     assert doc_proto.name
