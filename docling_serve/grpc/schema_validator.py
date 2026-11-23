@@ -156,6 +156,17 @@ ALLOWED_COERCIONS: dict[str, tuple[str, str]] = {
         "optional<list<string>>",
         "list<enum:NumberingScheme>",
     ),
+    # Pydantic stores keyword markers as dict[str, list[str]]. The wire uses
+    # a repeated message so each family stays a typed record, not a map entry
+    # whose value would be an untyped list.
+    "**.numbering_keywords": (
+        "map<string,list<string>>",
+        "list<message:NumberingKeyword>",
+    ),
+    # MediaRef.mimetype is a closed string on the Pydantic model and
+    # MediaMimetype on the core document proto. The core converter maps it.
+    "tracks.audio.mimetype": ("string", "enum:MediaMimetype"),
+    "tracks.video.mimetype": ("string", "enum:MediaMimetype"),
 }
 
 # Pydantic models whose proto counterpart carries a different message name.

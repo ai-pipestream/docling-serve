@@ -1,4 +1,4 @@
-"""Schema 1.11 and typed serve-surface parity against slim 2.150.0.
+"""Schema 1.12 and typed serve-surface parity against slim 2.151.1.
 
 Enum completeness is compared to the installed registries. A skip is not a pass.
 """
@@ -107,10 +107,12 @@ def _vlm_options(**overrides):
     return options
 
 
-def test_schema_current_version_is_1_11_and_both_minors_are_accepted():
-    assert CURRENT_VERSION == "1.11.0"
+def test_schema_current_version_is_1_12_and_older_minors_are_accepted():
+    assert CURRENT_VERSION == "1.12.0"
     document = DoclingDocument(name="schema-check")
-    assert document.version == "1.11.0"
+    assert document.version == "1.12.0"
+    assert document.tracks == []
+    assert validate_target_document_version("1.12.0") == "1.12.0"
     assert validate_target_document_version("1.11.0") == "1.11.0"
     assert validate_target_document_version("1.10.0") == "1.10.0"
     with pytest.raises(ValueError, match="unsupported"):
@@ -360,6 +362,101 @@ def test_numbering_schemes_enum_and_raw():
     assert mapped_mixed.pdf_heading_hierarchy_options.numbering_schemes == [
         "custom_scheme"
     ]
+
+
+def _heading_options(**kwargs):
+    return to_convert_options(
+        pb.ConvertDocumentOptions(
+            pdf_heading_hierarchy_options=pb.HeadingHierarchyOptions(**kwargs)
+        )
+    ).pdf_heading_hierarchy_options
+
+
+def test_numbering_keywords_set_unset_and_invalid():
+    unset = _heading_options()
+    assert unset.numbering_keywords == {}
+    assert unset.numbering_number_words == []
+
+    mapped = _heading_options(
+        numbering_keywords=[
+            pb.NumberingKeyword(family="chapter", words=["rozdział", "Rozdzial"]),
+            pb.NumberingKeyword(family="article", words=["art.", "artykuł"]),
+        ],
+        numbering_number_words=["pierwszy", "drugi"],
+    )
+    assert mapped.numbering_keywords == {
+        "chapter": ["rozdział", "Rozdzial"],
+        "article": ["art.", "artykuł"],
+    }
+    assert mapped.numbering_number_words == ["pierwszy", "drugi"]
+
+    custom = _heading_options(
+        numbering_schemes_raw=["kwartal"],
+        numbering_keywords=[pb.NumberingKeyword(family="kwartal", words=["kwartał"])],
+    )
+    assert custom.numbering_schemes == ["kwartal"]
+    assert custom.numbering_keywords == {"kwartal": ["kwartał"]}
+
+    with pytest.raises(ValueError, match="listed in numbering_schemes"):
+        _heading_options(
+            numbering_keywords=[pb.NumberingKeyword(family="kwartal", words=["q"])]
+        )
+    with pytest.raises(ValueError, match="empty family"):
+        _heading_options(
+            numbering_keywords=[pb.NumberingKeyword(family="  ", words=["q"])]
+        )
+    with pytest.raises(ValueError, match="empty word"):
+        _heading_options(
+            numbering_keywords=[pb.NumberingKeyword(family="chapter", words=[" "])]
+        )
+    with pytest.raises(ValueError, match="numeral scheme"):
+        _heading_options(
+            numbering_keywords=[pb.NumberingKeyword(family="arabic", words=["no"])]
+        )
+    with pytest.raises(ValueError, match="numbering_number_words contains an empty"):
+        _heading_options(numbering_number_words=["pierwszy", ""])
+
+
+def test_chart_extraction_scale_set_unset_and_invalid():
+    def _config(**overrides):
+        config = pb.ChartExtractionVlmEngineOptions(
+            engine_options=pb.BaseVlmEngineOptions(
+                engine_type=pb.VLM_ENGINE_TYPE_TRANSFORMERS
+            ),
+            model_spec=pb.VlmModelSpec(
+                name="granite-vision-v4",
+                default_repo_id="ibm-granite/granite-vision-4.1-4b",
+                prompt="p",
+                response_format=pb.RESPONSE_FORMAT_MARKDOWN,
+            ),
+        )
+        for name, value in overrides.items():
+            setattr(config, name, value)
+        return config
+
+    unset = to_convert_options(
+        pb.ConvertDocumentOptions(chart_extraction_custom_config=_config())
+    )
+    assert unset.chart_extraction_custom_config.scale == 2.0
+
+    set_scale = to_convert_options(
+        pb.ConvertDocumentOptions(chart_extraction_custom_config=_config(scale=3.5))
+    )
+    assert set_scale.chart_extraction_custom_config.scale == pytest.approx(3.5)
+
+    with pytest.raises(ValueError, match="scale must be greater than 0"):
+        to_convert_options(
+            pb.ConvertDocumentOptions(chart_extraction_custom_config=_config(scale=0))
+        )
+    with pytest.raises(ValueError, match="scale must be greater than 0"):
+        to_convert_options(
+            pb.ConvertDocumentOptions(chart_extraction_custom_config=_config(scale=-1))
+        )
+
+    granite_v4 = ChartExtractionVlmEngineOptions.from_preset("granite_vision_v4")
+    assert granite_v4.scale == 4.0
+    granite_v3 = ChartExtractionVlmEngineOptions.from_preset("granite_vision_v3_3")
+    assert granite_v3.scale == 2.0
 
 
 def test_quality_grade_unknown_tag_preserves_raw():

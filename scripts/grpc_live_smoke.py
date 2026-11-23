@@ -83,7 +83,7 @@ def _convert(stub, filename: str, payload: bytes):
     document = response.response.document.doc
     if document.schema_name != "DoclingDocument":
         raise SystemExit(f"{filename}: schema_name={document.schema_name!r}")
-    if document.version != "1.11.0":
+    if document.version != "1.12.0":
         raise SystemExit(f"{filename}: version={document.version!r}")
     if not document.name:
         raise SystemExit(f"{filename}: empty document name")

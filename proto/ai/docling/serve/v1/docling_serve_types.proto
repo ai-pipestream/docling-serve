@@ -704,6 +704,11 @@ message ChartExtractionVlmEngineOptions {
   optional ChartExtractionOutputFormat output_format = 6;
   optional string output_format_raw = 7;
   optional bool use_natural_language_prompts = 8;
+  // Render scale for the chart crops sent to the model (1.0 = 72 dpi).
+  // Omitted keeps the model default of 2.0. A set value must be > 0.
+  // The granite_vision_v4 preset (and its MLX copy) sets 4.0; that value
+  // lives on the preset, not on this default.
+  optional double scale = 9;
 }
 
 // HeadingHierarchyOptions configures PDF/image section-header level inference.
@@ -723,6 +728,15 @@ enum NumberingScheme {
   NUMBERING_SCHEME_ROMAN_L = 10;
 }
 
+// NumberingKeyword adds marker words to one heading-numbering family.
+// `family` is part, chapter, division, subdivision, article, or a name
+// that numbering_schemes also lists. An empty family or word is invalid.
+// Docling 557df045 (#5474). Pydantic stores this as dict[str, list[str]].
+message NumberingKeyword {
+  string family = 1;
+  repeated string words = 2;
+}
+
 message HeadingHierarchyOptions {
   optional bool enabled = 1;
   optional bool use_bookmarks = 2;
@@ -737,6 +751,11 @@ message HeadingHierarchyOptions {
   // Docling >=2.120: relative font-size tolerance for collapsing style levels.
   optional double style_size_tolerance = 9;
   repeated NumberingScheme numbering_schemes = 10;
+  // Extra keyword markers, family to words. Empty keeps the model default {}.
+  repeated NumberingKeyword numbering_keywords = 11;
+  // Extra number words that count as the enumerator after a keyword.
+  // Empty keeps the model default [].
+  repeated string numbering_number_words = 12;
 }
 
 // OcrMode mirrors docling.datamodel.pipeline_options.OcrMode.
