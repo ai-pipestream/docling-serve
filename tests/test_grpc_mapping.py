@@ -1252,6 +1252,22 @@ def test_custom_config_scalar_maps_reject_nesting_by_construction():
     assert mapped.include_page_images is True
 
 
+def test_table_structure_custom_config_scale_passes_through_typed():
+    """Granite table scale stays a ScalarValue double, not a new message."""
+    options = docling_serve_types_pb2.ConvertDocumentOptions(
+        table_structure_custom_config=_scalar_map(scale=2.5, mode="accurate")
+    )
+    scale_value = options.table_structure_custom_config["scale"]
+    assert scale_value.HasField("double_value")
+    assert not scale_value.HasField("string_value")
+    mapped = to_convert_options(options)
+    assert mapped.table_structure_custom_config == {
+        "scale": pytest.approx(2.5),
+        "mode": "accurate",
+    }
+    assert isinstance(mapped.table_structure_custom_config["scale"], float)
+
+
 def test_generic_source_attributes_are_scalar_map_not_json():
     sources = to_task_sources(
         [

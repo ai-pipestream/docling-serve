@@ -4,6 +4,7 @@ import enum
 import json
 import logging
 import re
+import unicodedata
 from collections.abc import Iterable
 from typing import Optional
 
@@ -15,6 +16,8 @@ from docling.datamodel.base_models import (
     QualityGrade,
 )
 from docling.datamodel.pipeline_options import (
+    NUMBERING_KEYWORD_FAMILIES,
+    NUMBERING_NUMERAL_SCHEMES,
     CodeFormulaVlmOptions,
     HeadingHierarchyOptions,
     NemotronParseOptions,
@@ -913,6 +916,12 @@ def _to_chart_extraction_vlm_engine_options(proto):  # noqa: C901
         data["output_format"] = proto.output_format_raw
     if proto.HasField("use_natural_language_prompts"):
         data["use_natural_language_prompts"] = proto.use_natural_language_prompts
+    if proto.HasField("scale"):
+        if not proto.scale > 0:
+            raise ValueError(
+                "chart_extraction_custom_config.scale must be greater than 0"
+            )
+        data["scale"] = proto.scale
     return ChartExtractionVlmEngineOptions.model_validate(data)
 
 
@@ -1553,6 +1562,64 @@ def _numbering_schemes_from_proto(proto) -> list[str]:
     return schemes
 
 
+def _numbering_keywords_from_proto(proto) -> dict[str, list[str]]:
+    """Map numbering_keywords to the Pydantic family -> words dict.
+
+    A family is one of the keyword families, or a name also present in
+    numbering_schemes. Numeral schemes are rejected. An empty family, an
+    empty word, a repeated family, or the same word in two families is an
+    error. An empty list is the model default and is not passed through.
+    """
+    if not proto.numbering_keywords:
+        return {}
+    schemes = set(_numbering_schemes_from_proto(proto))
+    allowed = set(NUMBERING_KEYWORD_FAMILIES) | schemes
+    reserved = {*NUMBERING_NUMERAL_SCHEMES, "dotted"}
+    owner: dict[str, str] = {}
+    cleaned: dict[str, list[str]] = {}
+    for entry in proto.numbering_keywords:
+        family = entry.family
+        if not family.strip():
+            raise ValueError("numbering_keywords has an empty family name")
+        if family in reserved:
+            raise ValueError(
+                f"numbering_keywords cannot add words to the numeral scheme {family!r}"
+            )
+        if family not in allowed:
+            raise ValueError(
+                f"numbering_keywords family {family!r} must be one of "
+                f"{', '.join(NUMBERING_KEYWORD_FAMILIES)} "
+                "or listed in numbering_schemes"
+            )
+        if family in cleaned:
+            raise ValueError(
+                f"numbering_keywords lists the family {family!r} more than once"
+            )
+        words = [word.strip() for word in entry.words]
+        for word in words:
+            if not word:
+                raise ValueError(
+                    f"numbering_keywords[{family!r}] contains an empty word"
+                )
+            key = unicodedata.normalize("NFC", word).casefold()
+            previous = owner.get(key)
+            if previous is not None and previous != family:
+                raise ValueError(
+                    f"numbering_keywords lists {word!r} in the families "
+                    f"{previous!r} and {family!r}"
+                )
+            owner[key] = family
+        cleaned[family] = words
+    return cleaned
+
+
+def _numbering_number_words_from_proto(proto) -> list[str]:
+    words = [word.strip() for word in proto.numbering_number_words]
+    if any(not word for word in words):
+        raise ValueError("numbering_number_words contains an empty word")
+    return words
+
+
 def _to_heading_hierarchy_options(
     proto: docling_serve_types_pb2.HeadingHierarchyOptions,
 ) -> HeadingHierarchyOptions:
@@ -1576,11 +1643,19 @@ def _to_heading_hierarchy_options(
         data["use_font_style"] = proto.use_font_style
     if proto.HasField("style_size_tolerance"):
         data["style_size_tolerance"] = proto.style_size_tolerance
-    # Only pass fields the installed Pydantic model knows (2.118 vs 2.120+).
+    keywords = _numbering_keywords_from_proto(proto)
+    if keywords:
+        data["numbering_keywords"] = keywords
+    number_words = _numbering_number_words_from_proto(proto)
+    if number_words:
+        data["numbering_number_words"] = number_words
     known = set(HeadingHierarchyOptions.model_fields)
-    return HeadingHierarchyOptions.model_validate(
-        {key: value for key, value in data.items() if key in known}
-    )
+    unknown = sorted(key for key in data if key not in known)
+    if unknown:
+        raise ValueError(
+            "installed HeadingHierarchyOptions does not accept " + ", ".join(unknown)
+        )
+    return HeadingHierarchyOptions.model_validate(data)
 
 
 def to_hierarchical_chunk_options(

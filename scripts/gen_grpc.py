@@ -42,7 +42,8 @@ def _uv_cache_proto(commit: str) -> pathlib.Path | None:
     """Proto sources from the git checkout uv used to build this pin.
 
     The wheel ships generated stubs, not ``proto/``. After ``uv sync`` the
-    checkout is still in the uv cache, named by the first 7 hex digits.
+    checkout is still in the uv cache (``git-v2`` or ``git-v1``), named by
+    the first 7 hex digits of the commit.
     """
     roots: list[pathlib.Path] = []
     if os.environ.get("UV_CACHE_DIR"):
@@ -50,14 +51,15 @@ def _uv_cache_proto(commit: str) -> pathlib.Path | None:
     roots.append(pathlib.Path.home() / ".cache" / "uv")
     names = {commit, commit[:7]}
     for root in roots:
-        checkouts = root / "git-v1" / "checkouts"
-        if not checkouts.is_dir():
-            continue
-        for name in names:
-            for proto in checkouts.glob(f"*/{name}/proto"):
-                found = _valid_proto_dir(proto)
-                if found is not None:
-                    return found
+        for version in ("git-v2", "git-v1"):
+            checkouts = root / version / "checkouts"
+            if not checkouts.is_dir():
+                continue
+            for name in names:
+                for proto in checkouts.glob(f"*/{name}/proto"):
+                    found = _valid_proto_dir(proto)
+                    if found is not None:
+                        return found
     return None
 
 

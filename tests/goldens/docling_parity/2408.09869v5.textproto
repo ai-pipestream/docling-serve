@@ -1,5 +1,5 @@
 schema_name: "DoclingDocument"
-version: "1.11.0"
+version: "1.12.0"
 name: "2408.09869v5"
 origin {
   mimetype: "application/pdf"
@@ -467,11 +467,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 290
+          end: 295
         }
       }
-      orig: "Christoph Auer MaksymLysak Ahmed Nassar Michele Dolfi Nikolaos Livathinos Panos Vagenas Cesar Berrospi Ramis Matteo Omenetti Fabian Lindlbauer Kasper Dinkla LokeshMishra Yusik Kim ShubhamGupta Rafael Teixeira de Lima ValeryWeber Lucas Morin Ingmar Meijer Viktor Kuropiatnyk PeterW. J. Staar"
-      text: "Christoph Auer MaksymLysak Ahmed Nassar Michele Dolfi Nikolaos Livathinos Panos Vagenas Cesar Berrospi Ramis Matteo Omenetti Fabian Lindlbauer Kasper Dinkla LokeshMishra Yusik Kim ShubhamGupta Rafael Teixeira de Lima ValeryWeber Lucas Morin Ingmar Meijer Viktor Kuropiatnyk PeterW. J. Staar"
+      orig: "Christoph Auer Maksym Lysak Ahmed Nassar Michele Dolfi Nikolaos Livathinos Panos Vagenas Cesar Berrospi Ramis Matteo Omenetti Fabian Lindlbauer Kasper Dinkla Lokesh Mishra Yusik Kim Shubham Gupta Rafael Teixeira de Lima Valery Weber Lucas Morin Ingmar Meijer Viktor Kuropiatnyk Peter W. J. Staar"
+      text: "Christoph Auer Maksym Lysak Ahmed Nassar Michele Dolfi Nikolaos Livathinos Panos Vagenas Cesar Berrospi Ramis Matteo Omenetti Fabian Lindlbauer Kasper Dinkla Lokesh Mishra Yusik Kim Shubham Gupta Rafael Teixeira de Lima Valery Weber Lucas Morin Ingmar Meijer Viktor Kuropiatnyk Peter W. J. Staar"
     }
   }
 }
@@ -494,11 +494,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 47
+          end: 49
         }
       }
-      orig: "AI4KGroup, IBMResearch R¨uschlikon, Switzerland"
-      text: "AI4KGroup, IBMResearch R¨uschlikon, Switzerland"
+      orig: "AI4K Group, IBM Research R¨uschlikon, Switzerland"
+      text: "AI4K Group, IBM Research R¨uschlikon, Switzerland"
     }
   }
 }
@@ -988,11 +988,11 @@ texts {
         coord_origin: COORD_ORIGIN_BOTTOMLEFT
       }
       charspan {
-        end: 322
+        end: 321
       }
     }
-    orig: "from docling.document_converter import DocumentConverter source = \"https://arxiv.org/pdf/2206.01062\" # PDF path or URL converter = DocumentConverter() result = converter.convert_single(source) print(result.render_as_markdown()) # output: \"## DocLayNet: A Large Human -Annotated Dataset for Document -Layout Analysis [...]\""
-    text: "from docling.document_converter import DocumentConverter source = \"https://arxiv.org/pdf/2206.01062\" # PDF path or URL converter = DocumentConverter() result = converter.convert_single(source) print(result.render_as_markdown()) # output: \"## DocLayNet: A Large Human -Annotated Dataset for Document -Layout Analysis [...]\""
+    orig: "from docling.document_converter import DocumentConverter source = \"https://arxiv.org/pdf/2206.01062\" # PDF path or URL converter = DocumentConverter() result = converter.convert_single(source) print(result.render_as_markdown()) # output: \"## DocLayNet: A Large Human-Annotated Dataset for Document -Layout Analysis [...]\""
+    text: "from docling.document_converter import DocumentConverter source = \"https://arxiv.org/pdf/2206.01062\" # PDF path or URL converter = DocumentConverter() result = converter.convert_single(source) print(result.render_as_markdown()) # output: \"## DocLayNet: A Large Human-Annotated Dataset for Document -Layout Analysis [...]\""
     code_language: CODE_LANGUAGE_LABEL_UNKNOWN
   }
 }
@@ -3581,11 +3581,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 15
+          end: 16
         }
       }
-      orig: "Birgit P￿tzmann"
-      text: "Birgit P￿tzmann"
+      orig: "Birgit Pfitzmann"
+      text: "Birgit Pfitzmann"
     }
   }
 }
@@ -3797,11 +3797,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 12
+          end: 13
         }
       }
-      orig: "Michele Dol￿"
-      text: "Michele Dol￿"
+      orig: "Michele Dolfi"
+      text: "Michele Dolfi"
     }
   }
 }
@@ -4149,11 +4149,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 1595
+          end: 1600
         }
       }
-      orig: "Accurate document layout analysis is a key requirement for high- quality PDF document conversion. With the recent availability of public, large ground-truth datasets such as PubLayNet and DocBank, deep-learning models have proven to be very e￿ective at layout detection and segmentation. While these datasets are of adequate size to train such models, they severely lack in layout variability since they are sourced from scienti￿c article repositories such as PubMed and arXiv only. Consequently, the accuracy of the layout segmentation drops signi￿cantly when these models are applied on more challenging and diverse layouts. In this paper, we present DocLayNet, a new, publicly available, document-layout annotation dataset in COCO format. It contains 80863 manually annotated pages from diverse data sources to represent a wide variability in layouts. For each PDF page, the layout annotations provide labelled bounding-boxes with a choice of 11 distinct classes. DocLayNet also provides a subset of double- and triple-annotated pages to determine the inter-annotator agreement. In multiple experiments, we provide baseline accuracy scores (in mAP) for a set of popular object detection models. We also demonstrate that these models fall approximately 10% behind the inter-annotator agreement. Fur- thermore, we provide evidence that DocLayNet is of su￿cient size. Lastly, we compare models trained on PubLayNet, DocBank and DocLayNet, showing that layout predictions of the DocLayNet- trained models are more robust and thus the preferred choice for general-purpose document-layout analysis."
-      text: "Accurate document layout analysis is a key requirement for high- quality PDF document conversion. With the recent availability of public, large ground-truth datasets such as PubLayNet and DocBank, deep-learning models have proven to be very e￿ective at layout detection and segmentation. While these datasets are of adequate size to train such models, they severely lack in layout variability since they are sourced from scienti￿c article repositories such as PubMed and arXiv only. Consequently, the accuracy of the layout segmentation drops signi￿cantly when these models are applied on more challenging and diverse layouts. In this paper, we present DocLayNet, a new, publicly available, document-layout annotation dataset in COCO format. It contains 80863 manually annotated pages from diverse data sources to represent a wide variability in layouts. For each PDF page, the layout annotations provide labelled bounding-boxes with a choice of 11 distinct classes. DocLayNet also provides a subset of double- and triple-annotated pages to determine the inter-annotator agreement. In multiple experiments, we provide baseline accuracy scores (in mAP) for a set of popular object detection models. We also demonstrate that these models fall approximately 10% behind the inter-annotator agreement. Fur- thermore, we provide evidence that DocLayNet is of su￿cient size. Lastly, we compare models trained on PubLayNet, DocBank and DocLayNet, showing that layout predictions of the DocLayNet- trained models are more robust and thus the preferred choice for general-purpose document-layout analysis."
+      orig: "Accurate document layout analysis is a key requirement for high- quality PDF document conversion. With the recent availability of public, large ground-truth datasets such as PubLayNet and DocBank, deep-learning models have proven to be very effective at layout detection and segmentation. While these datasets are of adequate size to train such models, they severely lack in layout variability since they are sourced from scientific article repositories such as PubMed and arXiv only. Consequently, the accuracy of the layout segmentation drops significantly when these models are applied on more challenging and diverse layouts. In this paper, we present DocLayNet, a new, publicly available, document-layout annotation dataset in COCO format. It contains 80863 manually annotated pages from diverse data sources to represent a wide variability in layouts. For each PDF page, the layout annotations provide labelled bounding-boxes with a choice of 11 distinct classes. DocLayNet also provides a subset of double- and triple-annotated pages to determine the inter-annotator agreement. In multiple experiments, we provide baseline accuracy scores (in mAP) for a set of popular object detection models. We also demonstrate that these models fall approximately 10% behind the inter-annotator agreement. Fur- thermore, we provide evidence that DocLayNet is of sufficient size. Lastly, we compare models trained on PubLayNet, DocBank and DocLayNet, showing that layout predictions of the DocLayNet- trained models are more robust and thus the preferred choice for general-purpose document-layout analysis."
+      text: "Accurate document layout analysis is a key requirement for high- quality PDF document conversion. With the recent availability of public, large ground-truth datasets such as PubLayNet and DocBank, deep-learning models have proven to be very effective at layout detection and segmentation. While these datasets are of adequate size to train such models, they severely lack in layout variability since they are sourced from scientific article repositories such as PubMed and arXiv only. Consequently, the accuracy of the layout segmentation drops significantly when these models are applied on more challenging and diverse layouts. In this paper, we present DocLayNet, a new, publicly available, document-layout annotation dataset in COCO format. It contains 80863 manually annotated pages from diverse data sources to represent a wide variability in layouts. For each PDF page, the layout annotations provide labelled bounding-boxes with a choice of 11 distinct classes. DocLayNet also provides a subset of double- and triple-annotated pages to determine the inter-annotator agreement. In multiple experiments, we provide baseline accuracy scores (in mAP) for a set of popular object detection models. We also demonstrate that these models fall approximately 10% behind the inter-annotator agreement. Fur- thermore, we provide evidence that DocLayNet is of sufficient size. Lastly, we compare models trained on PubLayNet, DocBank and DocLayNet, showing that layout predictions of the DocLayNet- trained models are more robust and thus the preferred choice for general-purpose document-layout analysis."
     }
   }
 }
@@ -4204,11 +4204,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 57
+          end: 58
         }
       }
-      orig: "· Information systems →Document structure; · Applied com-"
-      text: "· Information systems →Document structure; · Applied com-"
+      orig: "· Information systems → Document structure; · Applied com-"
+      text: "· Information systems → Document structure; · Applied com-"
     }
   }
 }
@@ -4258,11 +4258,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 53
+          end: 54
         }
       }
-      orig: "→Machine learning; Computer vision; Object detection;"
-      text: "→Machine learning; Computer vision; Object detection;"
+      orig: "→ Machine learning; Computer vision; Object detection;"
+      text: "→ Machine learning; Computer vision; Object detection;"
     }
   }
 }
@@ -4339,11 +4339,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 88
+          end: 89
         }
       }
-      orig: "for pro￿t or commercial advantage and that copies bear this notice and the full citation"
-      text: "for pro￿t or commercial advantage and that copies bear this notice and the full citation"
+      orig: "for profit or commercial advantage and that copies bear this notice and the full citation"
+      text: "for profit or commercial advantage and that copies bear this notice and the full citation"
     }
   }
 }
@@ -4366,11 +4366,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 85
+          end: 86
         }
       }
-      orig: "on the ￿rst page. Copyrights for third-party components of this work must be honored."
-      text: "on the ￿rst page. Copyrights for third-party components of this work must be honored."
+      orig: "on the first page. Copyrights for third-party components of this work must be honored."
+      text: "on the first page. Copyrights for third-party components of this work must be honored."
     }
   }
 }
@@ -4585,8 +4585,8 @@ texts {
           end: 20
         }
       }
-      orig: "MODELS AY1 230/1 234"
-      text: "MODELS AY1 230/1 234"
+      orig: "MODELS AY11230/11234"
+      text: "MODELS AY11230/11234"
     }
   }
 }
@@ -4639,8 +4639,8 @@ texts {
           end: 38
         }
       }
-      orig: "instructional viewing or to phot graph"
-      text: "instructional viewing or to phot graph"
+      orig: "instructional viewing or to photograph"
+      text: "instructional viewing or to photograph"
     }
   }
 }
@@ -4666,8 +4666,8 @@ texts {
           end: 36
         }
       }
-      orig: "the image with a dig tal camera or a"
-      text: "the image with a dig tal camera or a"
+      orig: "the image with a digital camera or a"
+      text: "the image with a digital camera or a"
     }
   }
 }
@@ -4720,8 +4720,8 @@ texts {
           end: 42
         }
       }
-      orig: "2. Lo sen the ret ntion screw, then rota e"
-      text: "2. Lo sen the ret ntion screw, then rota e"
+      orig: "2. Loosen the retention screw, then rotate"
+      text: "2. Loosen the retention screw, then rotate"
     }
   }
 }
@@ -4936,8 +4936,8 @@ texts {
           end: 37
         }
       }
-      orig: "magnif cation objective has a greater"
-      text: "magnif cation objective has a greater"
+      orig: "magnification objective has a greater"
+      text: "magnification objective has a greater"
     }
   }
 }
@@ -4960,11 +4960,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 23
+          end: 24
         }
       }
-      orig: "depth of ield and view."
-      text: "depth of ield and view."
+      orig: "depth of field and view."
+      text: "depth of field and view."
     }
   }
 }
@@ -5017,8 +5017,8 @@ texts {
           end: 34
         }
       }
-      orig: "easily use the lower magnif cation"
-      text: "easily use the lower magnif cation"
+      orig: "easily use the lower magnification"
+      text: "easily use the lower magnification"
     }
   }
 }
@@ -5071,8 +5071,8 @@ texts {
           end: 30
         }
       }
-      orig: "case, the magnif cation can be"
-      text: "case, the magnif cation can be"
+      orig: "case, the magnification can be"
+      text: "case, the magnification can be"
     }
   }
 }
@@ -5125,8 +5125,8 @@ texts {
           end: 27
         }
       }
-      orig: "CHANGING THE INTERPUPIL ARY"
-      text: "CHANGING THE INTERPUPIL ARY"
+      orig: "CHANGING THE INTERPUPILLARY"
+      text: "CHANGING THE INTERPUPILLARY"
     }
   }
 }
@@ -5179,8 +5179,8 @@ texts {
           end: 38
         }
       }
-      orig: "1. The distance betwe n the observer\'s"
-      text: "1. The distance betwe n the observer\'s"
+      orig: "1. The distance between the observer\'s"
+      text: "1. The distance between the observer\'s"
     }
   }
 }
@@ -5206,8 +5206,8 @@ texts {
           end: 38
         }
       }
-      orig: "pupils is the interpupil ary distance."
-      text: "pupils is the interpupil ary distance."
+      orig: "pupils is the interpupillary distance."
+      text: "pupils is the interpupillary distance."
     }
   }
 }
@@ -5230,11 +5230,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 39
+          end: 40
         }
       }
-      orig: "2. To adjust he interpupil ary distance"
-      text: "2. To adjust he interpupil ary distance"
+      orig: "2. To adjust the interpupillary distance"
+      text: "2. To adjust the interpupillary distance"
     }
   }
 }
@@ -5476,8 +5476,8 @@ texts {
           end: 40
         }
       }
-      orig: "first while turni g the focus knob until"
-      text: "first while turni g the focus knob until"
+      orig: "first while turning the focus knob until"
+      text: "first while turning the focus knob until"
     }
   }
 }
@@ -5503,8 +5503,8 @@ texts {
           end: 34
         }
       }
-      orig: "the image ap ears clear and sharp."
-      text: "the image ap ears clear and sharp."
+      orig: "the image appears clear and sharp."
+      text: "the image appears clear and sharp."
     }
   }
 }
@@ -5635,11 +5635,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 28
+          end: 29
         }
       }
-      orig: "1. Discon ect he power cord."
-      text: "1. Discon ect he power cord."
+      orig: "1. Disconnect the power cord."
+      text: "1. Disconnect the power cord."
     }
   }
 }
@@ -5665,8 +5665,8 @@ texts {
           end: 36
         }
       }
-      orig: "2. When the bulb is co l, remove the"
-      text: "2. When the bulb is co l, remove the"
+      orig: "2. When the bulb is cool, remove the"
+      text: "2. When the bulb is cool, remove the"
     }
   }
 }
@@ -5692,8 +5692,8 @@ texts {
           end: 34
         }
       }
-      orig: "oblique il uminator cap and remove"
-      text: "oblique il uminator cap and remove"
+      orig: "oblique illuminator cap and remove"
+      text: "oblique illuminator cap and remove"
     }
   }
 }
@@ -5827,8 +5827,8 @@ texts {
           end: 31
         }
       }
-      orig: "fluorescent lamp of transmit ed"
-      text: "fluorescent lamp of transmit ed"
+      orig: "fluorescent lamp of transmitted"
+      text: "fluorescent lamp of transmitted"
     }
   }
 }
@@ -5854,8 +5854,8 @@ texts {
           end: 12
         }
       }
-      orig: "il uminator."
-      text: "il uminator."
+      orig: "illuminator."
+      text: "illuminator."
     }
   }
 }
@@ -5959,11 +5959,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 37
+          end: 38
         }
       }
-      orig: "2. If the image is unclear, adjust he"
-      text: "2. If the image is unclear, adjust he"
+      orig: "2. If the image is unclear, adjust the"
+      text: "2. If the image is unclear, adjust the"
     }
   }
 }
@@ -5989,8 +5989,8 @@ texts {
           end: 34
         }
       }
-      orig: "height of the el vator up or down,"
-      text: "height of the el vator up or down,"
+      orig: "height of the elevator up or down,"
+      text: "height of the elevator up or down,"
     }
   }
 }
@@ -6043,8 +6043,8 @@ texts {
           end: 18
         }
       }
-      orig: "ZO M MAGNIFICATION"
-      text: "ZO M MAGNIFICATION"
+      orig: "ZOOM MAGNIFICATION"
+      text: "ZOOM MAGNIFICATION"
     }
   }
 }
@@ -6070,8 +6070,8 @@ texts {
           end: 38
         }
       }
-      orig: "1. Turn the zo m magnif cation knob to"
-      text: "1. Turn the zo m magnif cation knob to"
+      orig: "1. Turn the zoom magnification knob to"
+      text: "1. Turn the zoom magnification knob to"
     }
   }
 }
@@ -6097,8 +6097,8 @@ texts {
           end: 38
         }
       }
-      orig: "the desired magnif cation and field of"
-      text: "the desired magnif cation and field of"
+      orig: "the desired magnification and field of"
+      text: "the desired magnification and field of"
     }
   }
 }
@@ -6175,11 +6175,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 27
+          end: 28
         }
       }
-      orig: "that you focus at he lowest"
-      text: "that you focus at he lowest"
+      orig: "that you focus at the lowest"
+      text: "that you focus at the lowest"
     }
   }
 }
@@ -6205,8 +6205,8 @@ texts {
           end: 36
         }
       }
-      orig: "magnif cation, then move to a higher"
-      text: "magnif cation, then move to a higher"
+      orig: "magnification, then move to a higher"
+      text: "magnification, then move to a higher"
     }
   }
 }
@@ -6232,8 +6232,8 @@ texts {
           end: 29
         }
       }
-      orig: "magnif cation and re-focus as"
-      text: "magnif cation and re-focus as"
+      orig: "magnification and re-focus as"
+      text: "magnification and re-focus as"
     }
   }
 }
@@ -6259,8 +6259,8 @@ texts {
           end: 10
         }
       }
-      orig: "neces ary."
-      text: "neces ary."
+      orig: "necessary."
+      text: "necessary."
     }
   }
 }
@@ -6310,11 +6310,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 36
+          end: 38
         }
       }
-      orig: "at he same time, the diopter ing may"
-      text: "at he same time, the diopter ing may"
+      orig: "at the same time, the diopter ring may"
+      text: "at the same time, the diopter ring may"
     }
   }
 }
@@ -6340,8 +6340,8 @@ texts {
           end: 16
         }
       }
-      orig: "ne d adjustment."
-      text: "ne d adjustment."
+      orig: "need adjustment."
+      text: "need adjustment."
     }
   }
 }
@@ -6391,11 +6391,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 41
+          end: 42
         }
       }
-      orig: "1. To adjust he eyepiece for viewing with"
-      text: "1. To adjust he eyepiece for viewing with"
+      orig: "1. To adjust the eyepiece for viewing with"
+      text: "1. To adjust the eyepiece for viewing with"
     }
   }
 }
@@ -6421,8 +6421,8 @@ texts {
           end: 29
         }
       }
-      orig: "or without eyeglas es and for"
-      text: "or without eyeglas es and for"
+      orig: "or without eyeglasses and for"
+      text: "or without eyeglasses and for"
     }
   }
 }
@@ -6448,8 +6448,8 @@ texts {
           end: 39
         }
       }
-      orig: "dif erences in acuity betwe n the right"
-      text: "dif erences in acuity betwe n the right"
+      orig: "differences in acuity between the right"
+      text: "differences in acuity between the right"
     }
   }
 }
@@ -6475,8 +6475,8 @@ texts {
           end: 35
         }
       }
-      orig: "and left eyes, fol ow the fol owing"
-      text: "and left eyes, fol ow the fol owing"
+      orig: "and left eyes, follow the following"
+      text: "and left eyes, follow the following"
     }
   }
 }
@@ -6556,8 +6556,8 @@ texts {
           end: 35
         }
       }
-      orig: "eyepiece and bring a specif c point"
-      text: "eyepiece and bring a specif c point"
+      orig: "eyepiece and bring a specific point"
+      text: "eyepiece and bring a specific point"
     }
   }
 }
@@ -6607,11 +6607,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 29
+          end: 30
         }
       }
-      orig: "b. By turni g the diopter ing"
-      text: "b. By turni g the diopter ing"
+      orig: "b. By turning the diopter ring"
+      text: "b. By turning the diopter ring"
     }
   }
 }
@@ -6769,11 +6769,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 33
+          end: 34
         }
       }
-      orig: "by turni g the right diopter ing."
-      text: "by turni g the right diopter ing."
+      orig: "by turning the right diopter ring."
+      text: "by turning the right diopter ring."
     }
   }
 }
@@ -6850,11 +6850,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 33
+          end: 34
         }
       }
-      orig: "diopter ing posit on for the left"
-      text: "diopter ing posit on for the left"
+      orig: "diopter ring position for the left"
+      text: "diopter ring position for the left"
     }
   }
 }
@@ -6904,11 +6904,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 26
+          end: 28
         }
       }
-      orig: "viewing set he diopter ing"
-      text: "viewing set he diopter ing"
+      orig: "viewing set the diopter ring"
+      text: "viewing set the diopter ring"
     }
   }
 }
@@ -6934,8 +6934,8 @@ texts {
           end: 28
         }
       }
-      orig: "adjustments to that set ing."
-      text: "adjustments to that set ing."
+      orig: "adjustments to that setting."
+      text: "adjustments to that setting."
     }
   }
 }
@@ -6985,11 +6985,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 36
+          end: 37
         }
       }
-      orig: "1. Discon ect he power cord from the"
-      text: "1. Discon ect he power cord from the"
+      orig: "1. Disconnect the power cord from the"
+      text: "1. Disconnect the power cord from the"
     }
   }
 }
@@ -7015,8 +7015,8 @@ texts {
           end: 18
         }
       }
-      orig: "el ctrical outlet."
-      text: "el ctrical outlet."
+      orig: "electrical outlet."
+      text: "electrical outlet."
     }
   }
 }
@@ -7042,8 +7042,8 @@ texts {
           end: 36
         }
       }
-      orig: "2. When the bulb is co l, remove the"
-      text: "2. When the bulb is co l, remove the"
+      orig: "2. When the bulb is cool, remove the"
+      text: "2. When the bulb is cool, remove the"
     }
   }
 }
@@ -7069,8 +7069,8 @@ texts {
           end: 34
         }
       }
-      orig: "oblique il uminator cap and remove"
-      text: "oblique il uminator cap and remove"
+      orig: "oblique illuminator cap and remove"
+      text: "oblique illuminator cap and remove"
     }
   }
 }
@@ -7204,8 +7204,8 @@ texts {
           end: 31
         }
       }
-      orig: "fluorescent lamp of transmit ed"
-      text: "fluorescent lamp of transmit ed"
+      orig: "fluorescent lamp of transmitted"
+      text: "fluorescent lamp of transmitted"
     }
   }
 }
@@ -7231,8 +7231,8 @@ texts {
           end: 12
         }
       }
-      orig: "il uminator."
-      text: "il uminator."
+      orig: "illuminator."
+      text: "illuminator."
     }
   }
 }
@@ -7258,8 +7258,8 @@ texts {
           end: 13
         }
       }
-      orig: "Model AY1 230"
-      text: "Model AY1 230"
+      orig: "Model AY11230"
+      text: "Model AY11230"
     }
   }
 }
@@ -7285,8 +7285,8 @@ texts {
           end: 13
         }
       }
-      orig: "Model AY1 234"
-      text: "Model AY1 234"
+      orig: "Model AY11234"
+      text: "Model AY11234"
     }
   }
 }
@@ -7366,8 +7366,8 @@ texts {
           end: 16
         }
       }
-      orig: "Revolving Tur et"
-      text: "Revolving Tur et"
+      orig: "Revolving Turret"
+      text: "Revolving Turret"
     }
   }
 }
@@ -7420,8 +7420,8 @@ texts {
           end: 10
         }
       }
-      orig: "Adju tment"
-      text: "Adju tment"
+      orig: "Adjustment"
+      text: "Adjustment"
     }
   }
 }
@@ -7528,8 +7528,8 @@ texts {
           end: 55
         }
       }
-      orig: "BARSKA Model AY1 236 is a powerful fixed power compound"
-      text: "BARSKA Model AY1 236 is a powerful fixed power compound"
+      orig: "BARSKA Model AY11236 is a powerful fixed power compound"
+      text: "BARSKA Model AY11236 is a powerful fixed power compound"
     }
   }
 }
@@ -7609,8 +7609,8 @@ texts {
           end: 67
         }
       }
-      orig: "for general clinical and medical studies and other scientif c uses."
-      text: "for general clinical and medical studies and other scientif c uses."
+      orig: "for general clinical and medical studies and other scientific uses."
+      text: "for general clinical and medical studies and other scientific uses."
     }
   }
 }
@@ -7663,8 +7663,8 @@ texts {
           end: 58
         }
       }
-      orig: "BARSKA Model AY1 236 is a fixed power compound microscope."
-      text: "BARSKA Model AY1 236 is a fixed power compound microscope."
+      orig: "BARSKA Model AY11236 is a fixed power compound microscope."
+      text: "BARSKA Model AY11236 is a fixed power compound microscope."
     }
   }
 }
@@ -7687,11 +7687,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 64
+          end: 65
         }
       }
-      orig: "It is constructed with two optical paths at he same angle. It is"
-      text: "It is constructed with two optical paths at he same angle. It is"
+      orig: "It is constructed with two optical paths at the same angle. It is"
+      text: "It is constructed with two optical paths at the same angle. It is"
     }
   }
 }
@@ -7717,8 +7717,8 @@ texts {
           end: 65
         }
       }
-      orig: "equip ed with transmit ed il umination. By using this instrument,"
-      text: "equip ed with transmit ed il umination. By using this instrument,"
+      orig: "equipped with transmitted illumination. By using this instrument,"
+      text: "equipped with transmitted illumination. By using this instrument,"
     }
   }
 }
@@ -7744,8 +7744,8 @@ texts {
           end: 59
         }
       }
-      orig: "the user can observe specimens at magnif cation from 40x to"
-      text: "the user can observe specimens at magnif cation from 40x to"
+      orig: "the user can observe specimens at magnification from 40x to"
+      text: "the user can observe specimens at magnification from 40x to"
     }
   }
 }
@@ -7771,8 +7771,8 @@ texts {
           end: 62
         }
       }
-      orig: "10 0x by selecting the desired objective lens. Coarse and fine"
-      text: "10 0x by selecting the desired objective lens. Coarse and fine"
+      orig: "1000x by selecting the desired objective lens. Coarse and fine"
+      text: "1000x by selecting the desired objective lens. Coarse and fine"
     }
   }
 }
@@ -7798,8 +7798,8 @@ texts {
           end: 65
         }
       }
-      orig: "focus adjustments provide ac uracy and image detail. The rotating"
-      text: "focus adjustments provide ac uracy and image detail. The rotating"
+      orig: "focus adjustments provide accuracy and image detail. The rotating"
+      text: "focus adjustments provide accuracy and image detail. The rotating"
     }
   }
 }
@@ -7825,8 +7825,8 @@ texts {
           end: 58
         }
       }
-      orig: "head al ows the user to posit on the eyepieces for maximum"
-      text: "head al ows the user to posit on the eyepieces for maximum"
+      orig: "head allows the user to position the eyepieces for maximum"
+      text: "head allows the user to position the eyepieces for maximum"
     }
   }
 }
@@ -7849,11 +7849,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 54
+          end: 56
         }
       }
-      orig: "viewing comfort and easy ac es to al adjustment knobs."
-      text: "viewing comfort and easy ac es to al adjustment knobs."
+      orig: "viewing comfort and easy access to all adjustment knobs."
+      text: "viewing comfort and easy access to all adjustment knobs."
     }
   }
 }
@@ -7879,8 +7879,8 @@ texts {
           end: 13
         }
       }
-      orig: "Model AY1 236"
-      text: "Model AY1 236"
+      orig: "Model AY11236"
+      text: "Model AY11236"
     }
   }
 }
@@ -8041,8 +8041,8 @@ texts {
           end: 8
         }
       }
-      orig: "F cusi g"
-      text: "F cusi g"
+      orig: "Focusing"
+      text: "Focusing"
     }
   }
 }
@@ -8087,16 +8087,16 @@ texts {
         bbox {
           l: 268.4828509718843
           t: 601.266779088233
-          r: 270.1599984539461
+          r: 270.42071308600373
           b: 600.7937718365217
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 7
+          end: 8
         }
       }
-      orig: "Eyepiec"
-      text: "Eyepiec"
+      orig: "Eyepiece"
+      text: "Eyepiece"
     }
   }
 }
@@ -8168,16 +8168,16 @@ texts {
         bbox {
           l: 256.57700767929384
           t: 592.5460629207056
-          r: 257.89413696264836
+          r: 258.0480086908228
           b: 592.0733712749491
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 5
+          end: 6
         }
       }
-      orig: "On/Of"
-      text: "On/Of"
+      orig: "On/Off"
+      text: "On/Off"
     }
   }
 }
@@ -8311,8 +8311,8 @@ texts {
           end: 13
         }
       }
-      orig: "Rota ing Head"
-      text: "Rota ing Head"
+      orig: "Rotating Head"
+      text: "Rotating Head"
     }
   }
 }
@@ -8392,8 +8392,8 @@ texts {
           end: 31
         }
       }
-      orig: "Interpupil ary Slide Adjustment"
-      text: "Interpupil ary Slide Adjustment"
+      orig: "Interpupillary Slide Adjustment"
+      text: "Interpupillary Slide Adjustment"
     }
   }
 }
@@ -8443,11 +8443,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 117
+          end: 118
         }
       }
-      orig: "7KHUH ZDV D FKDQJH WR WKH 7(536 FULWHULD LQ � � WKDW DႇHFWV FLUFOLQJ DUHD GLPHQVLRQ E\\ H[SDQGLQJ WKH DUHDV WR SURYLGH"
-      text: "7KHUH ZDV D FKDQJH WR WKH 7(536 FULWHULD LQ � � WKDW DႇHFWV FLUFOLQJ DUHD GLPHQVLRQ E\\ H[SDQGLQJ WKH DUHDV WR SURYLGH"
+      orig: "7KHUH ZDV D FKDQJH WR WKH 7(536 FULWHULD LQ ���� WKDW DႇHFWV FLUFOLQJ DUHD GLPHQVLRQ E\\ H[SDQGLQJ WKH DUHDV WR SURYLGH"
+      text: "7KHUH ZDV D FKDQJH WR WKH 7(536 FULWHULD LQ ���� WKDW DႇHFWV FLUFOLQJ DUHD GLPHQVLRQ E\\ H[SDQGLQJ WKH DUHDV WR SURYLGH"
     }
   }
 }
@@ -8470,11 +8470,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 116
+          end: 117
         }
       }
-      orig: "improved obstacle protection. To indicate that he new criteria had be n ap lied to a given procedure, a is placed on"
-      text: "improved obstacle protection. To indicate that he new criteria had be n ap lied to a given procedure, a is placed on"
+      orig: "improved obstacle protection. To indicate that the new criteria had been applied to a given procedure, a is placed on"
+      text: "improved obstacle protection. To indicate that the new criteria had been applied to a given procedure, a is placed on"
     }
   }
 }
@@ -8500,8 +8500,8 @@ texts {
           end: 119
         }
       }
-      orig: "the circling line of minimums. The new circling tables and explanatory information is located in the Legend of the TP ."
-      text: "the circling line of minimums. The new circling tables and explanatory information is located in the Legend of the TP ."
+      orig: "the circling line of minimums. The new circling tables and explanatory information is located in the Legend of the TPP."
+      text: "the circling line of minimums. The new circling tables and explanatory information is located in the Legend of the TPP."
     }
   }
 }
@@ -8527,8 +8527,8 @@ texts {
           end: 116
         }
       }
-      orig: "7KH DS URDFKHV XVLQJ VWDQGDUG FLUFOLQJ DS URDFK DUHDV FDQ EH LGHQWL¿HG E\\ WKH DEVHQFH RI WKH on the circling line of"
-      text: "7KH DS URDFKHV XVLQJ VWDQGDUG FLUFOLQJ DS URDFK DUHDV FDQ EH LGHQWL¿HG E\\ WKH DEVHQFH RI WKH on the circling line of"
+      orig: "7KH DSSURDFKHV XVLQJ VWDQGDUG FLUFOLQJ DSSURDFK DUHDV FDQ EH LGHQWL¿HG E\\ WKH DEVHQFH RI WKH on the circling line of"
+      text: "7KH DSSURDFKHV XVLQJ VWDQGDUG FLUFOLQJ DSSURDFK DUHDV FDQ EH LGHQWL¿HG E\\ WKH DEVHQFH RI WKH on the circling line of"
     }
   }
 }
@@ -8581,8 +8581,8 @@ texts {
           end: 57
         }
       }
-      orig: "$S O\\ 6WDQGDUG &LUFOLQJ $S URDFK 0DQHXYHULQJ 5DGLXV 7DEOH"
-      text: "$S O\\ 6WDQGDUG &LUFOLQJ $S URDFK 0DQHXYHULQJ 5DGLXV 7DEOH"
+      orig: "$SSO\\ 6WDQGDUG &LUFOLQJ $SSURDFK 0DQHXYHULQJ 5DGLXV 7DEOH"
+      text: "$SSO\\ 6WDQGDUG &LUFOLQJ $SSURDFK 0DQHXYHULQJ 5DGLXV 7DEOH"
     }
   }
 }
@@ -8608,8 +8608,8 @@ texts {
           end: 60
         }
       }
-      orig: "$S O\\ ([SDQGHG &LUFOLQJ $S URDFK 0DQHXYHULQJ $LUVSDFH 5DGLXV"
-      text: "$S O\\ ([SDQGHG &LUFOLQJ $S URDFK 0DQHXYHULQJ $LUVSDFH 5DGLXV"
+      orig: "$SSO\\ ([SDQGHG &LUFOLQJ $SSURDFK 0DQHXYHULQJ $LUVSDFH 5DGLXV"
+      text: "$SSO\\ ([SDQGHG &LUFOLQJ $SSURDFK 0DQHXYHULQJ $LUVSDFH 5DGLXV"
     }
   }
 }
@@ -8689,8 +8689,8 @@ texts {
           end: 92
         }
       }
-      orig: "The airport sketch is a depiction of the airport with emphasis on runway pat ern and related"
-      text: "The airport sketch is a depiction of the airport with emphasis on runway pat ern and related"
+      orig: "The airport sketch is a depiction of the airport with emphasis on runway pattern and related"
+      text: "The airport sketch is a depiction of the airport with emphasis on runway pattern and related"
     }
   }
 }
@@ -8713,11 +8713,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 92
+          end: 94
         }
       }
-      orig: "information, posit oned in either the lower left or lower ight corner of the chart o aid pi-"
-      text: "information, posit oned in either the lower left or lower ight corner of the chart o aid pi-"
+      orig: "information, positioned in either the lower left or lower right corner of the chart to aid pi-"
+      text: "information, positioned in either the lower left or lower right corner of the chart to aid pi-"
     }
   }
 }
@@ -8743,8 +8743,8 @@ texts {
           end: 92
         }
       }
-      orig: "lot recognit on of the airport from the air and to provide some information to aid on ground"
-      text: "lot recognit on of the airport from the air and to provide some information to aid on ground"
+      orig: "lot recognition of the airport from the air and to provide some information to aid on ground"
+      text: "lot recognition of the airport from the air and to provide some information to aid on ground"
     }
   }
 }
@@ -8794,11 +8794,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 62
+          end: 63
         }
       }
-      orig: "dimensions (length and width) are shown for al active runways."
-      text: "dimensions (length and width) are shown for al active runways."
+      orig: "dimensions (length and width) are shown for all active runways."
+      text: "dimensions (length and width) are shown for all active runways."
     }
   }
 }
@@ -8821,11 +8821,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 72
+          end: 73
         }
       }
-      orig: "Runway(s) are depicted based on what ype and construction of the runway."
-      text: "Runway(s) are depicted based on what ype and construction of the runway."
+      orig: "Runway(s) are depicted based on what type and construction of the runway."
+      text: "Runway(s) are depicted based on what type and construction of the runway."
     }
   }
 }
@@ -9145,11 +9145,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 109
+          end: 110
         }
       }
-      orig: "Taxiways and aprons are shaded grey. Other unway features that may be shown are runway numbers, runway dimen-"
-      text: "Taxiways and aprons are shaded grey. Other unway features that may be shown are runway numbers, runway dimen-"
+      orig: "Taxiways and aprons are shaded grey. Other runway features that may be shown are runway numbers, runway dimen-"
+      text: "Taxiways and aprons are shaded grey. Other runway features that may be shown are runway numbers, runway dimen-"
     }
   }
 }
@@ -9175,8 +9175,8 @@ texts {
           end: 61
         }
       }
-      orig: "sions, runway slope, ar esting gear, and displaced threshold."
-      text: "sions, runway slope, ar esting gear, and displaced threshold."
+      orig: "sions, runway slope, arresting gear, and displaced threshold."
+      text: "sions, runway slope, arresting gear, and displaced threshold."
     }
   }
 }
@@ -9202,8 +9202,8 @@ texts {
           end: 119
         }
       }
-      orig: "2WKHU LQIRUPDWLRQ FRQFHUQLQJ OLJKWLQJ� ¿QDO DS URDFK EHDULQJV� DLUSRUW EHDFRQ� REVWDFOHV� FRQWURO WRZHU� 1$9$,\'V� KHOL-"
-      text: "2WKHU LQIRUPDWLRQ FRQFHUQLQJ OLJKWLQJ� ¿QDO DS URDFK EHDULQJV� DLUSRUW EHDFRQ� REVWDFOHV� FRQWURO WRZHU� 1$9$,\'V� KHOL-"
+      orig: "2WKHU LQIRUPDWLRQ FRQFHUQLQJ OLJKWLQJ� ¿QDO DSSURDFK EHDULQJV� DLUSRUW EHDFRQ� REVWDFOHV� FRQWURO WRZHU� 1$9$,\'V� KHOL-"
+      text: "2WKHU LQIRUPDWLRQ FRQFHUQLQJ OLJKWLQJ� ¿QDO DSSURDFK EHDULQJV� DLUSRUW EHDFRQ� REVWDFOHV� FRQWURO WRZHU� 1$9$,\'V� KHOL-"
     }
   }
 }
@@ -9283,8 +9283,8 @@ texts {
           end: 118
         }
       }
-      orig: "The airport elevation is shown enclosed within a box in the up er left corner of the sketch box and the touchdown zone"
-      text: "The airport elevation is shown enclosed within a box in the up er left corner of the sketch box and the touchdown zone"
+      orig: "The airport elevation is shown enclosed within a box in the upper left corner of the sketch box and the touchdown zone"
+      text: "The airport elevation is shown enclosed within a box in the upper left corner of the sketch box and the touchdown zone"
     }
   }
 }
@@ -9307,11 +9307,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 118
+          end: 119
         }
       }
-      orig: "elevation (TDZE) is shown in the up er ight corner of the sketch box. The airport elevation is the highest point of an"
-      text: "elevation (TDZE) is shown in the up er ight corner of the sketch box. The airport elevation is the highest point of an"
+      orig: "elevation (TDZE) is shown in the upper right corner of the sketch box. The airport elevation is the highest point of an"
+      text: "elevation (TDZE) is shown in the upper right corner of the sketch box. The airport elevation is the highest point of an"
     }
   }
 }
@@ -9337,8 +9337,8 @@ texts {
           end: 122
         }
       }
-      orig: "DLUSRUW¶V XVDEOH UXQZD\\V PHDVXUHG LQ IH W IURP PHDQ VHD OHYHO� 7KH 7\'=( LV WKH KLJKHVW HOHYDWLRQ LQ WKH ¿UVW � � � IH W RI"
-      text: "DLUSRUW¶V XVDEOH UXQZD\\V PHDVXUHG LQ IH W IURP PHDQ VHD OHYHO� 7KH 7\'=( LV WKH KLJKHVW HOHYDWLRQ LQ WKH ¿UVW � � � IH W RI"
+      orig: "DLUSRUW¶V XVDEOH UXQZD\\V PHDVXUHG LQ IHHW IURP PHDQ VHD OHYHO� 7KH 7\'=( LV WKH KLJKHVW HOHYDWLRQ LQ WKH ¿UVW ����� IHHW RI"
+      text: "DLUSRUW¶V XVDEOH UXQZD\\V PHDVXUHG LQ IHHW IURP PHDQ VHD OHYHO� 7KH 7\'=( LV WKH KLJKHVW HOHYDWLRQ LQ WKH ¿UVW ����� IHHW RI"
     }
   }
 }
@@ -9361,11 +9361,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 66
+          end: 67
         }
       }
-      orig: "the landing surface. Circling only ap roaches wil not show a TDZE."
-      text: "the landing surface. Circling only ap roaches wil not show a TDZE."
+      orig: "the landing surface. Circling only approaches will not show a TDZE."
+      text: "the landing surface. Circling only approaches will not show a TDZE."
     }
   }
 }
@@ -9391,8 +9391,8 @@ texts {
           end: 3
         }
       }
-      orig: "1 4"
-      text: "1 4"
+      orig: "114"
+      text: "114"
     }
   }
 }
@@ -9415,11 +9415,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 69
+          end: 70
         }
       }
-      orig: "FA Chart Users\' Guide - Terminal Procedures Publication (TP ) - Terms"
-      text: "FA Chart Users\' Guide - Terminal Procedures Publication (TP ) - Terms"
+      orig: "FAA Chart Users\' Guide - Terminal Procedures Publication (TPP) - Terms"
+      text: "FAA Chart Users\' Guide - Terminal Procedures Publication (TPP) - Terms"
     }
   }
 }
@@ -9469,11 +9469,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 13
+          end: 14
         }
       }
-      orig: "2 August 2012"
-      text: "2 August 2012"
+      orig: "22 August 2012"
+      text: "22 August 2012"
     }
   }
 }
@@ -9496,11 +9496,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 48
+          end: 50
         }
       }
-      orig: "2012 ful year esult and final div dend an ounced"
-      text: "2012 ful year esult and final div dend an ounced"
+      orig: "2012 full year result and final dividend announced"
+      text: "2012 full year result and final dividend announced"
     }
   }
 }
@@ -9553,8 +9553,8 @@ texts {
           end: 29
         }
       }
-      orig: "Ex-div dend trading com ences"
-      text: "Ex-div dend trading com ences"
+      orig: "Ex-dividend trading commences"
+      text: "Ex-dividend trading commences"
     }
   }
 }
@@ -9604,11 +9604,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 34
+          end: 35
         }
       }
-      orig: "Record ate for 2012 final div dend"
-      text: "Record ate for 2012 final div dend"
+      orig: "Record date for 2012 final dividend"
+      text: "Record date for 2012 final dividend"
     }
   }
 }
@@ -9661,8 +9661,8 @@ texts {
           end: 22
         }
       }
-      orig: "Final div dend payable"
-      text: "Final div dend payable"
+      orig: "Final dividend payable"
+      text: "Final dividend payable"
     }
   }
 }
@@ -9715,8 +9715,8 @@ texts {
           end: 22
         }
       }
-      orig: "An ual General Me ting"
-      text: "An ual General Me ting"
+      orig: "Annual General Meeting"
+      text: "Annual General Meeting"
     }
   }
 }
@@ -9769,8 +9769,8 @@ texts {
           end: 50
         }
       }
-      orig: "2013 interim result and interim div dend an ounced"
-      text: "2013 interim result and interim div dend an ounced"
+      orig: "2013 interim result and interim dividend announced"
+      text: "2013 interim result and interim dividend announced"
     }
   }
 }
@@ -9820,11 +9820,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 49
+          end: 51
         }
       }
-      orig: "2013 ful year esults and final div dend an ounced"
-      text: "2013 ful year esults and final div dend an ounced"
+      orig: "2013 full year results and final dividend announced"
+      text: "2013 full year results and final dividend announced"
     }
   }
 }
@@ -9847,11 +9847,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 60
+          end: 61
         }
       }
-      orig: "1 Indicative dates only, subject o change/Board confirmation"
-      text: "1 Indicative dates only, subject o change/Board confirmation"
+      orig: "1 Indicative dates only, subject to change/Board confirmation"
+      text: "1 Indicative dates only, subject to change/Board confirmation"
     }
   }
 }
@@ -9874,11 +9874,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 85
+          end: 87
         }
       }
-      orig: "AGL\'s An ual General Me ting wil be held at he City Recital Hal , Angel Place, Sydney"
-      text: "AGL\'s An ual General Me ting wil be held at he City Recital Hal , Angel Place, Sydney"
+      orig: "AGL\'s Annual General Meeting will be held at the City Recital Hall, Angel Place, Sydney"
+      text: "AGL\'s Annual General Meeting will be held at the City Recital Hall, Angel Place, Sydney"
     }
   }
 }
@@ -10009,11 +10009,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 42
+          end: 43
         }
       }
-      orig: "the AGL busines has an established history"
-      text: "the AGL busines has an established history"
+      orig: "the AGL business has an established history"
+      text: "the AGL business has an established history"
     }
   }
 }
@@ -10066,8 +10066,8 @@ texts {
           end: 43
         }
       }
-      orig: "el ctric ty ne ds of Australian households."
-      text: "el ctric ty ne ds of Australian households."
+      orig: "electricity needs of Australian households."
+      text: "electricity needs of Australian households."
     }
   }
 }
@@ -10093,8 +10093,8 @@ texts {
           end: 43
         }
       }
-      orig: "In 1841, when AGL sup lied the gas to light"
-      text: "In 1841, when AGL sup lied the gas to light"
+      orig: "In 1841, when AGL supplied the gas to light"
+      text: "In 1841, when AGL supplied the gas to light"
     }
   }
 }
@@ -10120,8 +10120,8 @@ texts {
           end: 45
         }
       }
-      orig: "the first public stre t lamp, it was reported"
-      text: "the first public stre t lamp, it was reported"
+      orig: "the first public street lamp, it was reported"
+      text: "the first public street lamp, it was reported"
     }
   }
 }
@@ -10147,8 +10147,8 @@ texts {
           end: 37
         }
       }
-      orig: "in the Sydney Gazet e as a \"wonderful"
-      text: "in the Sydney Gazet e as a \"wonderful"
+      orig: "in the Sydney Gazette as a \"wonderful"
+      text: "in the Sydney Gazette as a \"wonderful"
     }
   }
 }
@@ -10174,8 +10174,8 @@ texts {
           end: 45
         }
       }
-      orig: "achievement of scientific knowledge, as isted"
-      text: "achievement of scientific knowledge, as isted"
+      orig: "achievement of scientific knowledge, assisted"
+      text: "achievement of scientific knowledge, assisted"
     }
   }
 }
@@ -10336,8 +10336,8 @@ texts {
           end: 37
         }
       }
-      orig: "AGL Energy Limited ABN 74 1 5 061 375"
-      text: "AGL Energy Limited ABN 74 1 5 061 375"
+      orig: "AGL Energy Limited ABN 74 115 061 375"
+      text: "AGL Energy Limited ABN 74 115 061 375"
     }
   }
 }
@@ -10525,8 +10525,8 @@ texts {
           end: 60
         }
       }
-      orig: "signs, signals and road markings that ke p traffic organized"
-      text: "signs, signals and road markings that ke p traffic organized"
+      orig: "signs, signals and road markings that keep traffic organized"
+      text: "signs, signals and road markings that keep traffic organized"
     }
   }
 }
@@ -10552,8 +10552,8 @@ texts {
           end: 21
         }
       }
-      orig: "and flowing smo thly."
-      text: "and flowing smo thly."
+      orig: "and flowing smoothly."
+      text: "and flowing smoothly."
     }
   }
 }
@@ -10603,11 +10603,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 61
+          end: 62
         }
       }
-      orig: "There are thre ways to read signs: by their shape, colour and"
-      text: "There are thre ways to read signs: by their shape, colour and"
+      orig: "There are three ways to read signs: by their shape, colour and"
+      text: "There are three ways to read signs: by their shape, colour and"
     }
   }
 }
@@ -10630,11 +10630,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 59
+          end: 60
         }
       }
-      orig: "the mes ages printed on them. Understanding these thre ways"
-      text: "the mes ages printed on them. Understanding these thre ways"
+      orig: "the messages printed on them. Understanding these three ways"
+      text: "the messages printed on them. Understanding these three ways"
     }
   }
 }
@@ -10657,11 +10657,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 64
+          end: 66
         }
       }
-      orig: "of clas ifying signs wil help you figure out he meani g of signs"
-      text: "of clas ifying signs wil help you figure out he meani g of signs"
+      orig: "of classifying signs will help you figure out the meaning of signs"
+      text: "of classifying signs will help you figure out the meaning of signs"
     }
   }
 }
@@ -10768,8 +10768,8 @@ texts {
           end: 13
         }
       }
-      orig: "Shows driv ng"
-      text: "Shows driv ng"
+      orig: "Shows driving"
+      text: "Shows driving"
     }
   }
 }
@@ -10849,8 +10849,8 @@ texts {
           end: 17
         }
       }
-      orig: "Scho l zone signs"
-      text: "Scho l zone signs"
+      orig: "School zone signs"
+      text: "School zone signs"
     }
   }
 }
@@ -10903,8 +10903,8 @@ texts {
           end: 12
         }
       }
-      orig: "yel ow-gre n"
-      text: "yel ow-gre n"
+      orig: "yellow-green"
+      text: "yellow-green"
     }
   }
 }
@@ -10930,8 +10930,8 @@ texts {
           end: 20
         }
       }
-      orig: "Tel s about motorist"
-      text: "Tel s about motorist"
+      orig: "Tells about motorist"
+      text: "Tells about motorist"
     }
   }
 }
@@ -10984,8 +10984,8 @@ texts {
           end: 17
         }
       }
-      orig: "Shows a permit ed"
-      text: "Shows a permit ed"
+      orig: "Shows a permitted"
+      text: "Shows a permitted"
     }
   }
 }
@@ -11065,8 +11065,8 @@ texts {
           end: 16
         }
       }
-      orig: "is not permit ed"
-      text: "is not permit ed"
+      orig: "is not permitted"
+      text: "is not permitted"
     }
   }
 }
@@ -11200,8 +11200,8 @@ texts {
           end: 16
         }
       }
-      orig: "Railway cros ing"
-      text: "Railway cros ing"
+      orig: "Railway crossing"
+      text: "Railway crossing"
     }
   }
 }
@@ -11335,8 +11335,8 @@ texts {
           end: 9
         }
       }
-      orig: "- scho l,"
-      text: "- scho l,"
+      orig: "- school,"
+      text: "- school,"
     }
   }
 }
@@ -11389,8 +11389,8 @@ texts {
           end: 15
         }
       }
-      orig: "cros walk signs"
-      text: "cros walk signs"
+      orig: "crosswalk signs"
+      text: "crosswalk signs"
     }
   }
 }
@@ -11551,8 +11551,8 @@ texts {
           end: 15
         }
       }
-      orig: "- warni g signs"
-      text: "- warni g signs"
+      orig: "- warning signs"
+      text: "- warning signs"
     }
   }
 }
@@ -11875,8 +11875,8 @@ texts {
           end: 14
         }
       }
-      orig: "- yel ow lines"
-      text: "- yel ow lines"
+      orig: "- yellow lines"
+      text: "- yellow lines"
     }
   }
 }
@@ -12144,11 +12144,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 376
+          end: 378
         }
       }
-      orig: "Birgit P￿tzmann, Christoph Auer, Michele Dol￿, Ahmed S. Nassar, and Peter Staar. 2022. DocLayNet: A Large Human-Annotated Dataset for Document- Layout Analysis. In Proceedings of the 28th ACM SIGKDD Conference on Knowledge Discovery and Data Mining (KDD \'22), August 14-18, 2022, Wash- ington, DC, USA. ACM, New York, NY, USA, 9 pages. https://doi.org/10.1145/ 3534678.3539043"
-      text: "Birgit P￿tzmann, Christoph Auer, Michele Dol￿, Ahmed S. Nassar, and Peter Staar. 2022. DocLayNet: A Large Human-Annotated Dataset for Document- Layout Analysis. In Proceedings of the 28th ACM SIGKDD Conference on Knowledge Discovery and Data Mining (KDD \'22), August 14-18, 2022, Wash- ington, DC, USA. ACM, New York, NY, USA, 9 pages. https://doi.org/10.1145/ 3534678.3539043"
+      orig: "Birgit Pfitzmann, Christoph Auer, Michele Dolfi, Ahmed S. Nassar, and Peter Staar. 2022. DocLayNet: A Large Human-Annotated Dataset for Document- Layout Analysis. In Proceedings of the 28th ACM SIGKDD Conference on Knowledge Discovery and Data Mining (KDD \'22), August 14-18, 2022, Wash- ington, DC, USA. ACM, New York, NY, USA, 9 pages. https://doi.org/10.1145/ 3534678.3539043"
+      text: "Birgit Pfitzmann, Christoph Auer, Michele Dolfi, Ahmed S. Nassar, and Peter Staar. 2022. DocLayNet: A Large Human-Annotated Dataset for Document- Layout Analysis. In Proceedings of the 28th ACM SIGKDD Conference on Knowledge Discovery and Data Mining (KDD \'22), August 14-18, 2022, Wash- ington, DC, USA. ACM, New York, NY, USA, 9 pages. https://doi.org/10.1145/ 3534678.3539043"
     }
   }
 }
@@ -12306,11 +12306,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 488
+          end: 489
         }
       }
-      orig: "Table 2: Prediction performance (mAP@0.5-0.95) of object detection networks on DocLayNet test set. The MRCNN (Mask R-CNN) and FRCNN (Faster R-CNN) models with ResNet-50 or ResNet-101 backbone were trained based on the network architectures from the detectron2 model zoo (Mask R-CNN R50, R101-FPN 3x, Faster R-CNN R101-FPN 3x), with default con￿gurations. The YOLO implementation utilized was YOLOv5x6 [13]. All models were initialised using pre-trained weights from the COCO 2017 dataset."
-      text: "Table 2: Prediction performance (mAP@0.5-0.95) of object detection networks on DocLayNet test set. The MRCNN (Mask R-CNN) and FRCNN (Faster R-CNN) models with ResNet-50 or ResNet-101 backbone were trained based on the network architectures from the detectron2 model zoo (Mask R-CNN R50, R101-FPN 3x, Faster R-CNN R101-FPN 3x), with default con￿gurations. The YOLO implementation utilized was YOLOv5x6 [13]. All models were initialised using pre-trained weights from the COCO 2017 dataset."
+      orig: "Table 2: Prediction performance (mAP@0.5-0.95) of object detection networks on DocLayNet test set. The MRCNN (Mask R-CNN) and FRCNN (Faster R-CNN) models with ResNet-50 or ResNet-101 backbone were trained based on the network architectures from the detectron2 model zoo (Mask R-CNN R50, R101-FPN 3x, Faster R-CNN R101-FPN 3x), with default configurations. The YOLO implementation utilized was YOLOv5x6 [13]. All models were initialised using pre-trained weights from the COCO 2017 dataset."
+      text: "Table 2: Prediction performance (mAP@0.5-0.95) of object detection networks on DocLayNet test set. The MRCNN (Mask R-CNN) and FRCNN (Faster R-CNN) models with ResNet-50 or ResNet-101 backbone were trained based on the network architectures from the detectron2 model zoo (Mask R-CNN R50, R101-FPN 3x, Faster R-CNN R101-FPN 3x), with default configurations. The YOLO implementation utilized was YOLOv5x6 [13]. All models were initialised using pre-trained weights from the COCO 2017 dataset."
     }
   }
 }
@@ -12333,11 +12333,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 1246
+          end: 1251
         }
       }
-      orig: "to avoid this at any cost in order to have clear, unbiased baseline numbers for human document-layout annotation. Third, we introduced the feature of snapping boxes around text segments to obtain a pixel-accurate annotation and again reduce time and e￿ort. The CCS annotation tool automatically shrinks every user-drawn box to the minimum bounding-box around the enclosed text-cells for all purely text-based segments, which excludes only Table and Picture. For the latter, we instructed annotation sta￿ to minimise inclusion of surrounding whitespace while including all graphical lines. A downside of snapping boxes to enclosed text cells is that some wrongly parsed PDF pages cannot be annotated correctly and need to be skipped. Fourth, we established a way to ￿ag pages as rejected for cases where no valid annotation according to the label guidelines could be achieved. Example cases for this would be PDF pages that render incorrectly or contain layouts that are impossible to capture with non-overlapping rectangles. Such rejected pages are not contained in the ￿nal dataset. With all these measures in place, experienced annotation sta￿ managed to annotate a single page in a typical timeframe of 20s to 60s, depending on its complexity."
-      text: "to avoid this at any cost in order to have clear, unbiased baseline numbers for human document-layout annotation. Third, we introduced the feature of snapping boxes around text segments to obtain a pixel-accurate annotation and again reduce time and e￿ort. The CCS annotation tool automatically shrinks every user-drawn box to the minimum bounding-box around the enclosed text-cells for all purely text-based segments, which excludes only Table and Picture. For the latter, we instructed annotation sta￿ to minimise inclusion of surrounding whitespace while including all graphical lines. A downside of snapping boxes to enclosed text cells is that some wrongly parsed PDF pages cannot be annotated correctly and need to be skipped. Fourth, we established a way to ￿ag pages as rejected for cases where no valid annotation according to the label guidelines could be achieved. Example cases for this would be PDF pages that render incorrectly or contain layouts that are impossible to capture with non-overlapping rectangles. Such rejected pages are not contained in the ￿nal dataset. With all these measures in place, experienced annotation sta￿ managed to annotate a single page in a typical timeframe of 20s to 60s, depending on its complexity."
+      orig: "to avoid this at any cost in order to have clear, unbiased baseline numbers for human document-layout annotation. Third, we introduced the feature of snapping boxes around text segments to obtain a pixel-accurate annotation and again reduce time and effort. The CCS annotation tool automatically shrinks every user-drawn box to the minimum bounding-box around the enclosed text-cells for all purely text-based segments, which excludes only Table and Picture. For the latter, we instructed annotation staff to minimise inclusion of surrounding whitespace while including all graphical lines. A downside of snapping boxes to enclosed text cells is that some wrongly parsed PDF pages cannot be annotated correctly and need to be skipped. Fourth, we established a way to flag pages as rejected for cases where no valid annotation according to the label guidelines could be achieved. Example cases for this would be PDF pages that render incorrectly or contain layouts that are impossible to capture with non-overlapping rectangles. Such rejected pages are not contained in the final dataset. With all these measures in place, experienced annotation staff managed to annotate a single page in a typical timeframe of 20s to 60s, depending on its complexity."
+      text: "to avoid this at any cost in order to have clear, unbiased baseline numbers for human document-layout annotation. Third, we introduced the feature of snapping boxes around text segments to obtain a pixel-accurate annotation and again reduce time and effort. The CCS annotation tool automatically shrinks every user-drawn box to the minimum bounding-box around the enclosed text-cells for all purely text-based segments, which excludes only Table and Picture. For the latter, we instructed annotation staff to minimise inclusion of surrounding whitespace while including all graphical lines. A downside of snapping boxes to enclosed text cells is that some wrongly parsed PDF pages cannot be annotated correctly and need to be skipped. Fourth, we established a way to flag pages as rejected for cases where no valid annotation according to the label guidelines could be achieved. Example cases for this would be PDF pages that render incorrectly or contain layouts that are impossible to capture with non-overlapping rectangles. Such rejected pages are not contained in the final dataset. With all these measures in place, experienced annotation staff managed to annotate a single page in a typical timeframe of 20s to 60s, depending on its complexity."
     }
   }
 }
@@ -12429,11 +12429,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 327
+          end: 329
         }
       }
-      orig: "Figure 5: Prediction performance (mAP@0.5-0.95) of a Mask R-CNN network with ResNet50 backbone trained on increasing fractions of the DocLayNet dataset. The learning curve ￿attens around the 80% mark, indicating that increasing the size of the DocLayNet dataset with similar data will not yield signi￿cantly better predictions."
-      text: "Figure 5: Prediction performance (mAP@0.5-0.95) of a Mask R-CNN network with ResNet50 backbone trained on increasing fractions of the DocLayNet dataset. The learning curve ￿attens around the 80% mark, indicating that increasing the size of the DocLayNet dataset with similar data will not yield signi￿cantly better predictions."
+      orig: "Figure 5: Prediction performance (mAP@0.5-0.95) of a Mask R-CNN network with ResNet50 backbone trained on increasing fractions of the DocLayNet dataset. The learning curve flattens around the 80% mark, indicating that increasing the size of the DocLayNet dataset with similar data will not yield significantly better predictions."
+      text: "Figure 5: Prediction performance (mAP@0.5-0.95) of a Mask R-CNN network with ResNet50 backbone trained on increasing fractions of the DocLayNet dataset. The learning curve flattens around the 80% mark, indicating that increasing the size of the DocLayNet dataset with similar data will not yield significantly better predictions."
     }
   }
 }
@@ -18073,11 +18073,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 40
+          end: 41
         }
       }
-      orig: "triple inter-annotator mAP@ 0.5-0.95 (%)"
-      text: "triple inter-annotator mAP@ 0.5-0.95 (%)"
+      orig: "triple inter-annotator mAP @ 0.5-0.95 (%)"
+      text: "triple inter-annotator mAP @ 0.5-0.95 (%)"
     }
   }
 }
@@ -19261,11 +19261,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 68
+          end: 70
         }
       }
-      orig: "include publication repositories such as arXiv 3 , government o￿ces,"
-      text: "include publication repositories such as arXiv 3 , government o￿ces,"
+      orig: "include publication repositories such as arXiv 3 , government offices,"
+      text: "include publication repositories such as arXiv 3 , government offices,"
     }
   }
 }
@@ -19288,11 +19288,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 64
+          end: 65
         }
       }
-      orig: "company websites as well as data directory services for ￿nancial"
-      text: "company websites as well as data directory services for ￿nancial"
+      orig: "company websites as well as data directory services for financial"
+      text: "company websites as well as data directory services for financial"
     }
   }
 }
@@ -19558,11 +19558,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 60
+          end: 61
         }
       }
-      orig: "between the di￿erent document categories was achieved by se-"
-      text: "between the di￿erent document categories was achieved by se-"
+      orig: "between the different document categories was achieved by se-"
+      text: "between the different document categories was achieved by se-"
     }
   }
 }
@@ -19639,11 +19639,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 61
+          end: 62
         }
       }
-      orig: "and bias the remaining page selection to those with ￿gures or"
-      text: "and bias the remaining page selection to those with ￿gures or"
+      orig: "and bias the remaining page selection to those with figures or"
+      text: "and bias the remaining page selection to those with figures or"
     }
   }
 }
@@ -19720,11 +19720,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 45
+          end: 46
         }
       }
-      orig: "many ￿gures and tables a given page contains."
-      text: "many ￿gures and tables a given page contains."
+      orig: "many figures and tables a given page contains."
+      text: "many figures and tables a given page contains."
     }
   }
 }
@@ -19774,11 +19774,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 62
+          end: 63
         }
       }
-      orig: "lected documents and identi￿ed the most common structural fea-"
-      text: "lected documents and identi￿ed the most common structural fea-"
+      orig: "lected documents and identified the most common structural fea-"
+      text: "lected documents and identified the most common structural fea-"
     }
   }
 }
@@ -19828,11 +19828,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 66
+          end: 67
         }
       }
-      orig: "elements and lead us to the de￿nition of 11 distinct class labels."
-      text: "elements and lead us to the de￿nition of 11 distinct class labels."
+      orig: "elements and lead us to the definition of 11 distinct class labels."
+      text: "elements and lead us to the definition of 11 distinct class labels."
     }
   }
 }
@@ -19936,11 +19936,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 71
+          end: 72
         }
       }
-      orig: "labels were (1) the overall occurrence of the label, (2) the speci￿city"
-      text: "labels were (1) the overall occurrence of the label, (2) the speci￿city"
+      orig: "labels were (1) the overall occurrence of the label, (2) the specificity"
+      text: "labels were (1) the overall occurrence of the label, (2) the specificity"
     }
   }
 }
@@ -20017,11 +20017,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 67
+          end: 68
         }
       }
-      orig: "page. Speci￿city ensures that the choice of label is not ambiguous,"
-      text: "page. Speci￿city ensures that the choice of label is not ambiguous,"
+      orig: "page. Specificity ensures that the choice of label is not ambiguous,"
+      text: "page. Specificity ensures that the choice of label is not ambiguous,"
     }
   }
 }
@@ -20261,7 +20261,7 @@ texts {
         }
         charspan {
           start: 121
-          end: 187
+          end: 188
         }
       }
       prov {
@@ -20274,8 +20274,8 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          start: 188
-          end: 254
+          start: 189
+          end: 256
         }
       }
       prov {
@@ -20288,8 +20288,8 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          start: 255
-          end: 324
+          start: 257
+          end: 326
         }
       }
       prov {
@@ -20302,12 +20302,12 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          start: 325
-          end: 392
+          start: 327
+          end: 396
         }
       }
-      orig: "Phase 1: Data selection and preparation. Our inclusion criwhile coverage ensures that all meaningful items on a page can be annotated. We refrained from class labels that are very speci￿c to a document category, such as Abstract in the Scienti￿c Articles category. We also avoided class labels that are tightly linked to the semantics of the text. Labels such as Author and A￿liation, as seen"
-      text: "Phase 1: Data selection and preparation. Our inclusion criwhile coverage ensures that all meaningful items on a page can be annotated. We refrained from class labels that are very speci￿c to a document category, such as Abstract in the Scienti￿c Articles category. We also avoided class labels that are tightly linked to the semantics of the text. Labels such as Author and A￿liation, as seen"
+      orig: "Phase 1: Data selection and preparation. Our inclusion criwhile coverage ensures that all meaningful items on a page can be annotated. We refrained from class labels that are very specific to a document category, such as Abstract in the Scientific Articles category. We also avoided class labels that are tightly linked to the semantics of the text. Labels such as Author and Affiliation, as seen"
+      text: "Phase 1: Data selection and preparation. Our inclusion criwhile coverage ensures that all meaningful items on a page can be annotated. We refrained from class labels that are very specific to a document category, such as Abstract in the Scientific Articles category. We also avoided class labels that are tightly linked to the semantics of the text. Labels such as Author and Affiliation, as seen"
     }
   }
 }
@@ -20330,11 +20330,11 @@ texts {
           coord_origin: COORD_ORIGIN_BOTTOMLEFT
         }
         charspan {
-          end: 732
+          end: 733
         }
       }
-      orig: "teria for documents were described in Section 3. A large e￿ort went into ensuring that all documents are free to use. The data sources in DocBank, are often only distinguishable by discriminating on 3 https://arxiv.org/ Figure 4: Table 1 from the DocLayNet paper in the original PDF (A), as rendered Markdown (B) and in JSON representation (C). Spanning table cells, such as the multi-column header \"triple interannotator mAP@0.5-0.95 (%)\", is repeated for each column in the Markdown representation (B), which guarantees that every data point can be traced back to row and column headings only by its grid coordinates in the table. In the JSON representation, the span information is reflected in the fields of each table cell (C)."
-      text: "teria for documents were described in Section 3. A large e￿ort went into ensuring that all documents are free to use. The data sources in DocBank, are often only distinguishable by discriminating on 3 https://arxiv.org/ Figure 4: Table 1 from the DocLayNet paper in the original PDF (A), as rendered Markdown (B) and in JSON representation (C). Spanning table cells, such as the multi-column header \"triple interannotator mAP@0.5-0.95 (%)\", is repeated for each column in the Markdown representation (B), which guarantees that every data point can be traced back to row and column headings only by its grid coordinates in the table. In the JSON representation, the span information is reflected in the fields of each table cell (C)."
+      orig: "teria for documents were described in Section 3. A large effort went into ensuring that all documents are free to use. The data sources in DocBank, are often only distinguishable by discriminating on 3 https://arxiv.org/ Figure 4: Table 1 from the DocLayNet paper in the original PDF (A), as rendered Markdown (B) and in JSON representation (C). Spanning table cells, such as the multi-column header \"triple interannotator mAP@0.5-0.95 (%)\", is repeated for each column in the Markdown representation (B), which guarantees that every data point can be traced back to row and column headings only by its grid coordinates in the table. In the JSON representation, the span information is reflected in the fields of each table cell (C)."
+      text: "teria for documents were described in Section 3. A large effort went into ensuring that all documents are free to use. The data sources in DocBank, are often only distinguishable by discriminating on 3 https://arxiv.org/ Figure 4: Table 1 from the DocLayNet paper in the original PDF (A), as rendered Markdown (B) and in JSON representation (C). Spanning table cells, such as the multi-column header \"triple interannotator mAP@0.5-0.95 (%)\", is repeated for each column in the Markdown representation (B), which guarantees that every data point can be traced back to row and column headings only by its grid coordinates in the table. In the JSON representation, the span information is reflected in the fields of each table cell (C)."
     }
   }
 }
@@ -21477,10 +21477,10 @@ pictures {
   prov {
     page_no: 7
     bbox {
-      l: 110.55327606201172
-      t: 672.4684066772461
-      r: 528.8085327148438
-      b: 434.54058837890625
+      l: 110.23387145996094
+      t: 672.6268081665039
+      r: 528.7980346679688
+      b: 434.447509765625
       coord_origin: COORD_ORIGIN_BOTTOMLEFT
     }
     charspan {

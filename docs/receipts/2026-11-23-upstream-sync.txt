@@ -1,0 +1,160 @@
+date: 2026-11-23
+cwd: /agent/repos/docling-serve
+branch: ai-pipestream/sync-upstream-69fb0588-schema-112-f786
+fork main before this sync: 5ab89999392e82772ef42c8a871c93d97edd31fb
+upstream fetched (not pushed): docling-project/docling-serve 69fb0588c5e04e09b4b6b6a8edf9613e812b3c36
+merge-base with upstream before this sync: 9c058dbb58f61021e3a16e37edb8a7527b2cb2d4 (v1.38.2)
+merge commit: e5a75a32fb3684519f0494ca76aff8e368dc3755
+merge parents: 5ab89999392e82772ef42c8a871c93d97edd31fb 69fb0588c5e04e09b4b6b6a8edf9613e812b3c36
+feature commit: 079c03a7ee85633cf0ef839130957c5a95106f81
+author: Kristian Rickert <kristian@apache.org>
+serve version: 1.38.2
+
+upstream commits merged (9c058db..69fb0588):
+  332acab fix(ui): show chunks outputs in the results (#749)
+  9214911 fix: updated pinned dependencies (#773)
+  a50b5dc docs: use HTTPS for ROCm clone instructions (#752)
+  4fb7935 fix: report a failed task's failure on the sync endpoints (#767)
+  e3d44cf fix: keep starting when an undeclared version lookup finds nothing (#753)
+  9eb92bb fix: check the expandable source pairing when a batch request has no target (#756)
+  69fb058 feat(metrics): fail-closed RQ collector with health gauges and configured-queue reporting (#739)
+
+lock pins (uv.lock, no docling-core 2.107.1, no f07269b):
+  docling-slim 2.151.1
+    git https://github.com/docling-project/docling
+    rev 0f3564c772e006c73417f61658a2d41c8352224d
+  docling-core 2.108.0
+    git https://github.com/ai-pipestream/docling-core
+    rev be06464f83e4570e1e39f0c5a4cb21c6aa4ff320
+  pyproject floors: docling-slim>=2.151.1,<3.0.0 and docling-core>=2.108.0
+installed check: python 3.12.3, slim 2.151.1, core 2.108.0, CURRENT_VERSION 1.12.0, serve 1.38.2
+uv 0.13.9
+extra: uv sync --extra easyocr (easyocr 1.7.2)
+tesseract 5.3.4 (leptonica 1.82.0), langs deu eng fra osd spa
+
+proto field numbers (append-only, generated stubs match):
+  NumberingKeyword.family = 1 (string)
+  NumberingKeyword.words = 2 (repeated string)
+  HeadingHierarchyOptions fields 1-10 unchanged
+  HeadingHierarchyOptions.numbering_keywords = 11 (repeated NumberingKeyword)
+  HeadingHierarchyOptions.numbering_number_words = 12 (repeated string)
+  ChartExtractionVlmEngineOptions.use_natural_language_prompts = 8
+  ChartExtractionVlmEngineOptions.scale = 9 (optional double)
+  core DoclingDocument.tracks = 29 (repeated TrackItem, not edited here)
+  core DocItemLabel.DOC_ITEM_LABEL_TRACK = 31
+
+intentionally not mirrored:
+  1. PyPI docling-slim 2.151.1 is tag v2.151.1 (56d39ffe). That wheel requires
+     docling-core>=2.106.0,<3 and does not contain numbering_keywords.
+     docling main 0f3564c is still version 2.151.1, requires
+     docling-core>=2.108.0 (floor changed in 5182e556), and contains
+     557df045 (#5474) and d1a7b7bf (#5460). The lock pins that git rev,
+     not the PyPI artifact, and not upstream serve's lock pin of
+     docling-core 2.107.1.
+  2. gRPC ConvertSourceBatch still aborts INVALID_ARGUMENT when targets is
+     empty ("Batch requests require a target or a non-empty targets list.")
+     after validate_batch_convert_request. Upstream #756 allows a
+     non-expandable REST source with no target. The existing gRPC test
+     test_convert_source_batch_requires_target expects the abort.
+     Expandable sources with no target stay rejected by policy.
+  3. Sync convert failure with no recorded detail uses
+     FailureCategory.UNKNOWN and FailurePhase.EXECUTION. FailurePhase has
+     no UNKNOWN member on this docling (ADMISSION, SOURCE_ENUMERATION,
+     EXECUTION, ORCHESTRATION only). The message is "The conversion task
+     failed.", matching the HTTP 500 text from 4fb7935. gRPC returns
+     TaskFailureResult on the response. SUCCESS with no result stays
+     NOT_FOUND. Chart granite_vision_v4 scale 4.0 is the preset, not the
+     unset proto default. Unset scale omits the field and the model
+     default 2.0 applies. table_structure custom scale stays in the
+     existing map<string, ScalarValue>; the new test checks double_value.
+  4. docs/usage.md is the upstream refresh from 9214911. It was not
+     regenerated for numbering_keywords or chart scale. Those options
+     arrived with the git slim pin, not with a serve endpoint change.
+
+suite layout: one `uv run pytest` of all 613 tests was OOM-killed
+(exit 137, cgroup) while `uv run docling-serve run` on port 5001 held
+the easyocr models (~6.3GB RSS) and pytest plus its docling-serve-grpc
+child overlapped it. dmesg: Memory cgroup out of memory, killed pytest
+pid 6138, anon-rss about 6.8GB, at 2026-11-23 05:55:53 UTC.
+Progress had 491 status marks, one failure, one skip. The failure was
+collected index 322:
+  tests/test_grpc_parity_fixture_goldens.py::test_pdf_fixture_matches_checked_in_docling_document_golden
+The checked-in golden was schema 1.11 (VERSIONS.txt docling-core 2.107.1).
+The traceback did not flush before the kill. Goldens were regenerated
+and that test was re-run green before the split suite below.
+The two later pytest commands ignore disjoint files and together cover
+the 613 collected tests: 605 passed, 8 skipped, 0 failed.
+
+command (golden regen, after the OOM, REST server stopped):
+  uv run python scripts/regen_grpc_parity_goldens.py tests/2408.09869v5.pdf
+result: wrote 2408.09869v5.pb (179424 bytes) and 2408.09869v5.textproto
+versions:
+  docling=2.151.1
+  docling-core=2.108.0
+  docling-serve=1.38.2
+  docling-slim=2.151.1
+
+command (golden re-run):
+  uv run pytest tests/test_grpc_parity_fixture_goldens.py --tb=short -q --maxfail=1 --color=no
+result: 3 passed, 38 warnings in 13.51s, exit 0
+
+command (all tests except the eight live REST files; REST server stopped):
+  uv run pytest --maxfail=0 --color=no --tb=line -q \
+    --ignore=tests/test_1-file-all-outputs.py \
+    --ignore=tests/test_1-file-async.py \
+    --ignore=tests/test_1-url-all-outputs.py \
+    --ignore=tests/test_1-url-async-ws.py \
+    --ignore=tests/test_1-url-async.py \
+    --ignore=tests/test_2-files-all-outputs.py \
+    --ignore=tests/test_2-urls-all-outputs.py \
+    --ignore=tests/test_2-urls-async-all-outputs.py
+result: 595 passed, 8 skipped, 3183 warnings in 551.17s, exit 0
+skips:
+  SKIPPED [1] tests/test_grpc_serve.py:378: API key not configured
+  SKIPPED [3] tests/test_rq_worker_metrics.py:60: Set TEST_REDIS_URL to run real Redis worker tests
+  SKIPPED [4] tests/test_rq_worker_metrics.py:116: Set TEST_REDIS_URL to run real Redis worker tests
+e2e: tests/test_docling_e2e_via_grpc.py is in this run. The fixture
+auto-starts docling-serve-grpc when DOCLING_E2E_GRPC_TARGET is unset.
+tests/test_grpc_serve.py also starts its own server in this run.
+
+command (live REST, server `uv run docling-serve run --host 127.0.0.1 --port 5001`, health {"status":"ok"}):
+  uv run pytest --maxfail=0 --color=no --tb=short -q \
+    tests/test_1-file-all-outputs.py \
+    tests/test_1-file-async.py \
+    tests/test_1-url-all-outputs.py \
+    tests/test_1-url-async-ws.py \
+    tests/test_1-url-async.py \
+    tests/test_2-files-all-outputs.py \
+    tests/test_2-urls-all-outputs.py \
+    tests/test_2-urls-async-all-outputs.py
+result: 10 passed in 731.50s, exit 0
+  PASSED tests/test_1-file-all-outputs.py::test_convert_file
+  PASSED tests/test_1-file-async.py::test_convert_url
+  PASSED tests/test_1-url-all-outputs.py::test_convert_url
+  PASSED tests/test_1-url-async-ws.py::test_convert_url
+  PASSED tests/test_1-url-async.py::test_convert_url
+  PASSED tests/test_1-url-async.py::test_chunk_url[False]
+  PASSED tests/test_1-url-async.py::test_chunk_url[True]
+  PASSED tests/test_2-files-all-outputs.py::test_convert_file
+  PASSED tests/test_2-urls-all-outputs.py::test_convert_url
+  PASSED tests/test_2-urls-async-all-outputs.py::test_convert_url
+
+combined full suite: 605 passed, 8 skipped, 0 failed (613 collected)
+
+command (parity subset, REST server stopped):
+  uv run pytest --maxfail=0 --color=no --tb=line -q \
+    tests/test_schema_validator.py \
+    tests/test_grpc_mapping.py \
+    tests/test_docling_document_converter.py \
+    tests/test_grpc_service_fake.py \
+    tests/test_field_items_conversion.py \
+    tests/test_grpc_parity_2026_10_26.py \
+    tests/test_grpc_typed_parity_111.py \
+    tests/test_grpc_schema_walk_parity.py \
+    tests/test_grpc_ocr_options.py \
+    tests/test_grpc_ocr_base_roundtrip_parity.py \
+    tests/test_grpc_parity_fixture_goldens.py \
+    tests/test_grpc_tracks_roundtrip.py
+result: 286 passed, 1802 warnings in 15.23s, exit 0
+
+This receipt is docs only. Tests do not import it.

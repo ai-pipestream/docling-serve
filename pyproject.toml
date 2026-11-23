@@ -33,8 +33,8 @@ classifiers = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "docling-slim[standard,service-client,models-remote,format-opendocument]>=2.150.1,<3.0.0",
-    "docling-core>=2.107.1",
+    "docling-slim[standard,service-client,models-remote,format-opendocument]>=2.151.1,<3.0.0",
+    "docling-core>=2.108.0",
     "docling-jobkit[rq,ray,vlm,azure,gcloudstorage,gdrive]>=3.9.1,<4",
     "fastapi[standard]>=0.138.0,<1.0.0",
     "httpx~=0.28",
@@ -208,7 +208,11 @@ torchvision = [
 pytorch-triton-rocm = [
   { index = "pytorch-rocm", marker = "sys_platform == 'linux'" },
 ]
-docling-core = { git = "https://github.com/ai-pipestream/docling-core", rev = "f07269bdd1d0bc72533eb5a3cb7ca340ecafb0c3" }
+docling-core = { git = "https://github.com/ai-pipestream/docling-core", rev = "be06464f83e4570e1e39f0c5a4cb21c6aa4ff320" }
+# PyPI docling-slim 2.151.1 (tag v2.151.1, 56d39ffe) still requires
+# docling-core>=2.106.0 and has no numbering_keywords. Main is still
+# version 2.151.1, requires docling-core>=2.108.0, and contains 557df045.
+docling-slim = { git = "https://github.com/docling-project/docling", rev = "0f3564c772e006c73417f61658a2d41c8352224d" }
 
 triton-rocm = [
     { index = "pytorch-rocm72", group = "rocm72", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" }

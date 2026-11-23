@@ -584,6 +584,90 @@ async def test_convert_source_sync_task_failure_uses_failure_arm():
     assert failure.message == "onnxruntime is not installed."
 
 
+class StoredFailureOrchestrator(FakeOrchestrator):
+    """Redis/RQ style: the failure is a stored outcome, and task_result is empty."""
+
+    async def enqueue(self, **kwargs) -> Task:
+        task = await super().enqueue(**kwargs)
+        self.results.pop(task.task_id, None)
+        task.task_status = TaskStatus.FAILURE
+        failure = _failure("The worker died while converting the document.")
+        task.failure = failure
+        self.failures[task.task_id] = StoredFailureOutcome(failure=failure)
+        return task
+
+
+class BareFailureOrchestrator(FakeOrchestrator):
+    """FAILURE with neither a stored outcome nor a recorded message."""
+
+    async def enqueue(self, **kwargs) -> Task:
+        task = await super().enqueue(**kwargs)
+        self.results.pop(task.task_id, None)
+        task.task_status = TaskStatus.FAILURE
+        task.failure = None
+        task.error_message = None
+        return task
+
+
+class SuccessWithoutResultOrchestrator(FakeOrchestrator):
+    """SUCCESS whose result was cleared. That is a missing result, not a failure."""
+
+    async def enqueue(self, **kwargs) -> Task:
+        task = await super().enqueue(**kwargs)
+        self.results.pop(task.task_id, None)
+        task.task_status = TaskStatus.SUCCESS
+        return task
+
+
+@pytest.mark.asyncio
+async def test_convert_source_sync_stored_failure_is_task_failure_result():
+    """A StoredFailureOutcome on the sync convert path is TaskFailureResult.
+
+    Mirrors the HTTP sync endpoints, which answer 500 with the failure
+    message instead of 404 once the task has failed.
+    """
+    async with _server_with(orchestrator=StoredFailureOrchestrator()) as stub:
+        response = await stub.ConvertSource(_file_convert_request())
+
+    assert response.WhichOneof("result") == "failure"
+    assert isinstance(response.failure, docling_serve_types_pb2.TaskFailureResult)
+    assert (
+        response.failure.failure.message
+        == "The worker died while converting the document."
+    )
+    assert (
+        response.failure.failure.category
+        == docling_serve_types_pb2.FAILURE_CATEGORY_SOURCE_UNAVAILABLE
+    )
+
+
+@pytest.mark.asyncio
+async def test_convert_source_sync_failure_without_detail_still_returns_failure():
+    async with _server_with(orchestrator=BareFailureOrchestrator()) as stub:
+        response = await stub.ConvertSource(_file_convert_request())
+
+    assert response.WhichOneof("result") == "failure"
+    assert response.failure.failure.message == "The conversion task failed."
+    assert (
+        response.failure.failure.category
+        == docling_serve_types_pb2.FAILURE_CATEGORY_UNKNOWN
+    )
+    assert (
+        response.failure.failure.phase
+        == docling_serve_types_pb2.FAILURE_PHASE_EXECUTION
+    )
+
+
+@pytest.mark.asyncio
+async def test_convert_source_sync_success_without_result_is_not_found():
+    async with _server_with(orchestrator=SuccessWithoutResultOrchestrator()) as stub:
+        with pytest.raises(grpc.aio.AioRpcError) as exc_info:
+            await stub.ConvertSource(_file_convert_request())
+
+    assert exc_info.value.code() == grpc.StatusCode.NOT_FOUND
+    assert "Task result not found" in exc_info.value.details()
+
+
 @pytest.mark.asyncio
 async def test_get_convert_result_not_found(grpc_stub):
     with pytest.raises(grpc.aio.AioRpcError) as exc_info:

@@ -399,11 +399,13 @@ class DoclingServeGrpcService(docling_serve_pb2_grpc.DoclingServeServiceServicer
             return None
         failure = task.failure
         if failure is None:
+            # FailurePhase has no UNKNOWN member. A task that already reached
+            # FAILURE left admission, so the unrecorded phase is execution.
             failure = PublicFailureInfo(
                 category=FailureCategory.UNKNOWN,
-                message=task.error_message or "Task failed.",
+                message=task.error_message or "The conversion task failed.",
                 retryable=False,
-                phase=FailurePhase.UNKNOWN,
+                phase=FailurePhase.EXECUTION,
             )
         return StoredFailureOutcome(failure=failure)
 
