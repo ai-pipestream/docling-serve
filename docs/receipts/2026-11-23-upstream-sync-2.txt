@@ -1,0 +1,204 @@
+date: 2026-11-23
+host: krick
+cwd: ~/grok-work/serve-sync-1123b (fresh clone of ai-pipestream/docling-serve)
+branch: ai-pipestream/sync-upstream-efebd65-jobkit-310
+fork main before this sync: c8a25f87df221654286f41f9f3772eeab1c6c8d3
+upstream fetched (not pushed): docling-project/docling-serve main
+  efebd65fad7aa4b9209e97a52d52325d15b75568 = tag v1.39.0
+merge-base with upstream before this sync: 69fb0588c5e04e09b4b6b6a8edf9613e812b3c36
+rev-list upstream/main...origin/main before: 8 behind, 172 ahead
+merge commit: c9b5c977c9dc8c3eeb112dd25ebebd881d9757fc
+merge parents: c8a25f87df221654286f41f9f3772eeab1c6c8d3 efebd65fad7aa4b9209e97a52d52325d15b75568
+feature commit: dd25c1abc2979f02ea4d634ac04520d2b661551b
+author: Kristian Rickert <kristian@apache.org>
+serve version: 1.39.0 (upstream bump efebd65, taken by the merge)
+
+upstream commits merged (69fb058..efebd65):
+  7fe44f2 fix: preserve required nested and dictionary form fields (#758)
+  f32ae30 docs: correct expansion of MCP in server guide (#750)
+  31fd6ec feat(metrics): add aggregate RQ worker counts by queue and state (#738)
+  e5fc8e5 fix: require docling-jobkit 3.10.0 (#775)
+  335456f feat: name zip downloads after the source document (#732)
+  568b065 fix: updated depencencies (#776)
+  a97b3ec feat: add DOCLING_SERVE_ALLOWED_PIPELINES and DOCLING_SERVE_DEFAULT_PIPELINE (#715)
+  efebd65 chore: bump version to 1.39.0 [skip ci]
+
+conflicts: pyproject.toml (dependencies), uv.lock. Nothing else conflicted.
+  pyproject resolution:
+    docling-slim[standard,service-client,models-remote,format-opendocument]>=2.152.0,<3.0.0
+    docling-core>=2.108.0          (fork floor kept; upstream says >=2.103.0)
+    docling-jobkit[rq,ray,vlm,azure,gcloudstorage,gdrive]>=3.10.0,<4
+    [tool.uv.sources] docling-slim git pin 0f3564c removed
+    [tool.uv.sources] docling-core git pin be06464 kept
+  uv.lock: upstream file taken, then `uv lock` (uv 0.11.16) with the fork
+    sources. Delta vs upstream lock: docling-core -> git be06464,
+    added grpcio-reflection 1.85.3, grpcio-tools 1.85.3,
+    protobuf 6.33.6 -> 7.36.2 (fork floor protobuf>=7.35.1, same as c8a25f8).
+
+lock pins (uv.lock):
+  docling-slim 2.152.0   pypi (docling tag 2.152.0 = 311b683)
+    wheel sha256 573edc5eae33f7ff29120636a78b6ce9e3205a927bedbb4b3501e3410a467349
+    Requires-Dist docling-core>=2.108.0,<3. Contains numbering_keywords
+    (#5474), ChartExtractionVlmEngineOptions.scale (#5460) and
+    ConvertDocumentsOptions.pipeline Optional default None (#4875).
+  docling-jobkit 3.10.0  pypi
+    wheel sha256 816748ff05afd152a6f906ff0b70d5c362143e751dbf590345506904628d4da7
+    SUPPORTED_PIPELINES = (standard, vlm); DoclingConverterManagerConfig
+    default_pipeline / allowed_pipelines; single_document_zip_filename.
+  docling-core 2.108.0   git https://github.com/ai-pipestream/docling-core
+    rev be06464f83e4570e1e39f0c5a4cb21c6aa4ff320
+installed check: python 3.12.13, slim 2.152.0, core 2.108.0,
+  CURRENT_VERSION 1.12.0, jobkit 3.10.0, serve 1.39.0, protobuf 7.36.2,
+  grpcio 1.85.3
+extra: uv sync --extra easyocr (easyocr 1.7.2)
+tesseract 5.5.0 (leptonica 1.86.0)
+
+proto:
+  no new field, no renumbering. Only the ZipArchiveResult comment changed.
+  ConvertDocumentOptions.pipeline = 11 (optional ProcessingPipeline), unchanged.
+  ProcessingPipeline: UNSPECIFIED 0, ASR 1, STANDARD 2, VLM 3, LEGACY 4,
+    NATIVE 5, unchanged.
+  ZipArchiveResult.content = 1, optional string filename = 2, unchanged.
+  `uv run python scripts/gen_grpc.py` (core proto from be06464): generated
+    stubs byte-identical, git status clean under docling_serve/grpc/gen.
+  `uv run python scripts/buf_check.py`: buf lint and buf format passed.
+  ServicePolicy is the shared dataclass in docling_serve/policy.py; the
+  merge adds allowed_pipelines and default_pipeline there. The gRPC server
+  builds the same policy (build_service_policy) and calls
+  validate_convert_options through grpc/policy_enforcement.py. The gRPC
+  server uses orchestrator_factory.get_async_orchestrator, so
+  _build_cm_config passes default_pipeline/allowed_pipelines to jobkit for
+  gRPC tasks too. No gRPC capabilities RPC exists, so the REST
+  CapabilitiesResponse.pipelines has no proto counterpart to add.
+
+tests added: tests/test_grpc_pipeline_policy_2026_11_23.py (28 tests)
+  installed stack: SUPPORTED_PIPELINES, pipeline default None, config defaults
+  proto pipeline tag 11 has presence, enum numbers pinned
+  unset proto pipeline -> mapped pipeline None, not in model_fields_set,
+    still None after normalize_options
+  explicit PROCESSING_PIPELINE_UNSPECIFIED -> unset
+  unset -> DoclingConverterManager._resolve_pipeline = server default
+    (standard, vlm), and via orchestrator_factory._build_cm_config
+  ASR, LEGACY, NATIVE: grpc validate_request detail == REST
+    validate_convert_options 422 detail, and jobkit _resolve_pipeline raises
+  STANDARD, VLM pass the REST check
+  live in-process gRPC server, allowed_pipelines=[vlm], default vlm:
+    ConvertSource and ConvertSourceAsync with STANDARD -> INVALID_ARGUMENT
+    "pipeline 'standard' is not allowed. Allowed values: ['vlm']." and
+    nothing enqueued; VLM and unset accepted; unset enqueued as None and
+    resolves to vlm
+  live gRPC server, default policy: ASR, LEGACY, NATIVE -> INVALID_ARGUMENT
+  ServicePolicy pipeline fields and startup errors
+  zip filename: single_document_zip_filename -> zip_result_to_proto for one
+    source, unsafe characters, two sources, zero sources, empty stem
+  GetConvertResult carries the producer filename "report.zip"
+  jobkit 3.10.0 process_exportable_results with ZipTarget, one and two
+    documents -> set_convert_result: "report.zip" and unset
+  chunker failure (see failures below): process_chunkable_results with a
+    chunker that raises -> num_failed 1, ChunkDocumentResponse with zero
+    chunks and the document SUCCESS
+
+failures found and what was done:
+  1. First full run (GPU visible) on krick:
+     3 failed, 615 passed, 7 skipped, 7 errors in 116.74s, exit 1.
+     tests/test_grpc_serve.py (7 errors), test_grpc_parity_fixture_goldens
+     ::test_pdf_fixture_matches_checked_in_docling_document_golden, and
+     test_results_clear.py::test_clear_results / test_delay_remove all
+     traced to torch.OutOfMemoryError / CUBLAS_STATUS_ALLOC_FAILED: the
+     shared 16 GB GPU on krick was nearly full from other processes
+     (133 MiB free). Not a code failure. Every later run uses
+     CUDA_VISIBLE_DEVICES="" (CPU), like the previous receipt's host.
+  2. CPU rerun of those three files:
+     1 failed, 11 passed, 1 skipped in 194.16s, exit 1.
+     tests/test_grpc_serve.py::test_chunk_hybrid_source_sync: 0 chunks.
+     Cause: AutoTokenizer.from_pretrained for
+     sentence-transformers/all-MiniLM-L6-v2 got 401 Unauthorized from
+     huggingface.co because the shell exported an HF_TOKEN the hub rejects.
+     Jobkit logs the error, counts num_failed, and returns an empty chunk
+     list (jobkit TODO: chunk errors are not propagated; the REST
+     ChunkDocumentResponse has the same shape). Fix for the runs: `env -u
+     HF_TOKEN` (the model is public and cached). Test added around it:
+     test_hybrid_chunker_tokenizer_failure_maps_to_empty_grpc_chunks.
+  3. New test file, first run: OUTPUT_FORMAT_MD does not exist
+     (enum is OUTPUT_FORMAT_MARKDOWN), and jobkit Task rejects raw
+     FileSource without a connector kind. Both fixed in the test by using
+     the proto enum name and grpc to_task_sources / to_task_target.
+
+command (golden regen, CPU, REST server stopped):
+  env -u HF_TOKEN CUDA_VISIBLE_DEVICES="" \
+    uv run python scripts/regen_grpc_parity_goldens.py tests/2408.09869v5.pdf
+result: wrote 2408.09869v5.pb (179424 bytes) and 2408.09869v5.textproto
+versions: docling=2.152.0 docling-core=2.108.0 docling-serve=1.39.0
+  docling-slim=2.152.0
+textproto diff: 20 lines, bbox float coordinates only (largest delta
+  about 6e-5); the old golden also passed on CPU before regen.
+
+suite layout: two disjoint parts covering all 670 collected tests
+  (`uv run pytest --collect-only -q`: 670 tests collected).
+
+command (part A, all tests except the eight live REST files):
+  env -u HF_TOKEN CUDA_VISIBLE_DEVICES="" uv run pytest --maxfail=0 \
+    --color=no --tb=line -q -rs -p no:cacheprovider \
+    --ignore=tests/test_1-file-all-outputs.py \
+    --ignore=tests/test_1-file-async.py \
+    --ignore=tests/test_1-url-all-outputs.py \
+    --ignore=tests/test_1-url-async-ws.py \
+    --ignore=tests/test_1-url-async.py \
+    --ignore=tests/test_2-files-all-outputs.py \
+    --ignore=tests/test_2-urls-all-outputs.py \
+    --ignore=tests/test_2-urls-async-all-outputs.py
+result: 652 passed, 8 skipped, 3561 warnings in 455.67s
+skips:
+  SKIPPED [1] tests/test_grpc_serve.py:378: API key not configured
+  SKIPPED [3] tests/test_rq_worker_metrics.py:60: Set TEST_REDIS_URL to run real Redis worker tests
+  SKIPPED [4] tests/test_rq_worker_metrics.py:116: Set TEST_REDIS_URL to run real Redis worker tests
+e2e: tests/test_docling_e2e_via_grpc.py and tests/test_grpc_serve.py start
+  their own docling-serve-grpc in this run.
+
+command (part B, live REST; server
+  `env -u HF_TOKEN CUDA_VISIBLE_DEVICES="" uv run docling-serve run --host 127.0.0.1 --port 5001`,
+  health {"status":"ok"}, part A finished first):
+  env -u HF_TOKEN CUDA_VISIBLE_DEVICES="" uv run pytest --maxfail=0 \
+    --color=no --tb=short -q -rA -p no:cacheprovider \
+    tests/test_1-file-all-outputs.py tests/test_1-file-async.py \
+    tests/test_1-url-all-outputs.py tests/test_1-url-async-ws.py \
+    tests/test_1-url-async.py tests/test_2-files-all-outputs.py \
+    tests/test_2-urls-all-outputs.py tests/test_2-urls-async-all-outputs.py
+result: 10 passed in 518.64s
+  PASSED tests/test_1-file-all-outputs.py::test_convert_file
+  PASSED tests/test_1-file-async.py::test_convert_url
+  PASSED tests/test_1-url-all-outputs.py::test_convert_url
+  PASSED tests/test_1-url-async-ws.py::test_convert_url
+  PASSED tests/test_1-url-async.py::test_convert_url
+  PASSED tests/test_1-url-async.py::test_chunk_url[False]
+  PASSED tests/test_1-url-async.py::test_chunk_url[True]
+  PASSED tests/test_2-files-all-outputs.py::test_convert_file
+  PASSED tests/test_2-urls-all-outputs.py::test_convert_url
+  PASSED tests/test_2-urls-async-all-outputs.py::test_convert_url
+
+combined full suite: 662 passed, 8 skipped, 0 failed (670 collected)
+
+command (parity subset plus policy files):
+  env -u HF_TOKEN CUDA_VISIBLE_DEVICES="" uv run pytest --maxfail=0 \
+    --color=no --tb=line -q -p no:cacheprovider \
+    tests/test_schema_validator.py tests/test_grpc_mapping.py \
+    tests/test_docling_document_converter.py tests/test_grpc_service_fake.py \
+    tests/test_field_items_conversion.py tests/test_grpc_parity_2026_10_26.py \
+    tests/test_grpc_typed_parity_111.py tests/test_grpc_schema_walk_parity.py \
+    tests/test_grpc_ocr_options.py tests/test_grpc_ocr_base_roundtrip_parity.py \
+    tests/test_grpc_parity_fixture_goldens.py tests/test_grpc_tracks_roundtrip.py \
+    tests/test_grpc_pipeline_policy_2026_11_23.py tests/test_service_policy.py \
+    tests/test_env_parsing.py
+result: 393 passed, 2414 warnings in 25.90s, exit 0
+
+intentionally not mirrored:
+  1. REST CapabilitiesResponse.pipelines (#715) has no gRPC counterpart;
+     the gRPC service has no capabilities RPC.
+  2. Chunk failures stay invisible on ChunkDocumentResponse (no
+     num_failed), matching REST and the jobkit 3.10.0 TODO.
+  3. docs/usage.md is upstream's (a97b3ec). Not regenerated.
+  4. No Forgejo repository exists for docling-serve (Forgejo API
+     repos/search q=docling returns none; ai-pipestream org has no
+     docling-*), so there was no mirror to update.
+
+This receipt is docs only. Tests do not import it.
