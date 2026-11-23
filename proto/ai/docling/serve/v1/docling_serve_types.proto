@@ -1347,8 +1347,10 @@ message CallbackSpec {
 // ZipArchiveResult mirrors docling's ZipArchiveResult (ZipTarget).
 // `kind` stays off the wire. `filename` is copied only when the producer
 // set it. Unset is not an empty string. Slim 2.143 added the field. Jobkit
-// 3.9.1 still builds the archive without a name, so the wire value stays
-// unset until a producer sets it. Clients keep their current fallback.
+// 3.10.0 sets it from single_document_zip_filename: exactly one source
+// document gives "{stem}.zip" with path components and filename or header
+// unsafe characters removed. Zero or several documents, or a stem that ends
+// up empty, leave it unset. REST uses it as the download name (serve #732).
 message ZipArchiveResult {
   bytes content = 1;
   optional string filename = 2;
