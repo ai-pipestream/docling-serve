@@ -66,10 +66,13 @@ from docling.datamodel.service.responses import (
     ChunkDocumentResponse,
     ClearResponse,
     ConvertDocumentResponse,
+    FailureCategory,
+    FailurePhase,
     HealthCheckResponse,
     MessageKind,
     PresignedUrlConvertDocumentResponse,
     PresignedUrlConvertResponse,
+    PublicFailureInfo,
     ReadinessResponse,
     TaskFailureResult,
     TaskStatusResponse,
@@ -1643,6 +1646,20 @@ def create_app():  # noqa: C901
             task = await orchestrator.task_status(task_id=task_id)
             _assert_task_tenant(task, tenant_id)
             outcome = await orchestrator.task_outcome(task_id=task_id)
+            if outcome is None and task.task_status == TaskStatus.FAILURE:
+                # Orchestrators that keep no stored failure outcome (the local
+                # one) still record the failure on the task. Report it the way
+                # stored outcomes are reported, as gRPC already does, instead
+                # of a 404 that reads as "result not ready".
+                return TaskFailureResult(
+                    failure=task.failure
+                    or PublicFailureInfo(
+                        category=FailureCategory.UNKNOWN,
+                        message=task.error_message or "The conversion task failed.",
+                        retryable=False,
+                        phase=FailurePhase.EXECUTION,
+                    )
+                )
             if outcome is None:
                 raise HTTPException(
                     status_code=404,
