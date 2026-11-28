@@ -144,6 +144,69 @@ async def test_rest_hierarchical_chunk_still_succeeds_without_a_tokenizer(
     assert body["documents"][0]["status"] == "success"
 
 
+class _FailedTaskOrchestrator:
+    """Keeps no stored outcome and records the failure only as error_message."""
+
+    def __init__(self, task):
+        self.task = task
+
+    async def task_status(self, *, task_id: str, wait: float | None = None):
+        return self.task
+
+    async def task_outcome(self, task_id: str):
+        return None
+
+
+@pytest.mark.asyncio
+async def test_rest_result_for_failed_task_without_failure_info_is_typed_unknown():
+    """task.failure unset (older orchestrators): UNKNOWN/EXECUTION, not a 404."""
+    from docling_jobkit.datamodel.task import Task
+    from docling_jobkit.datamodel.task_meta import TaskStatus, TaskType
+
+    task = Task(
+        task_id="failed-no-info",
+        task_type=TaskType.CHUNK,
+        task_status=TaskStatus.FAILURE,
+        error_message="Document chunking failed (RuntimeError).",
+    )
+    app = create_app()
+    app.dependency_overrides[get_async_orchestrator] = lambda: _FailedTaskOrchestrator(
+        task
+    )
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://app.io"
+    ) as client:
+        response = await client.get("/v1/result/failed-no-info")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["kind"] == "TaskFailureResult"
+    assert body["failure"]["category"] == "unknown"
+    assert body["failure"]["phase"] == "execution"
+    assert body["failure"]["message"] == "Document chunking failed (RuntimeError)."
+    assert body["failure"]["retryable"] is False
+
+
+@pytest.mark.asyncio
+async def test_rest_result_for_unfinished_task_is_still_404():
+    from docling_jobkit.datamodel.task import Task
+    from docling_jobkit.datamodel.task_meta import TaskStatus, TaskType
+
+    task = Task(
+        task_id="running",
+        task_type=TaskType.CHUNK,
+        task_status=TaskStatus.STARTED,
+    )
+    app = create_app()
+    app.dependency_overrides[get_async_orchestrator] = lambda: _FailedTaskOrchestrator(
+        task
+    )
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://app.io"
+    ) as client:
+        response = await client.get("/v1/result/running")
+    assert response.status_code == 404
+
+
 # --- gRPC ------------------------------------------------------------------
 
 
