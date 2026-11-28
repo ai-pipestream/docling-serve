@@ -1,0 +1,129 @@
+chunker failure surfacing (REST and gRPC)
+date: 2026-11-28
+host: krick, fresh clones in ~/grok-work/chunkfail
+author/committer: Kristian Rickert <krickert@gmail.com>
+python 3.12.13; docling-slim 2.152.0, docling-core 2.108.0 (fork git be06464),
+  docling-serve 1.39.0, protobuf 7.36.2, grpcio 1.85.3
+
+problem
+  docling-jobkit process_chunkable_results caught every chunker exception,
+  logged it, counted num_failed and returned a successful ChunkedDocumentResult
+  with zero chunks and the document status SUCCESS. Upstream marks this with a
+  TODO. With an expired HF_TOKEN the tokenizer download returned 401 and REST
+  and gRPC both answered success with 0 chunks.
+
+approach
+  Fix in jobkit (the exception is discarded there, serve cannot recover it),
+  serve consumes the fork commit by git pin. Upstream merges stay easy: the
+  jobkit change is confined to process_chunkable_results, public_errors.py and
+  the local worker failure branch; the serve change is one pyproject source
+  line, the lock entry and one branch in GET /v1/result.
+
+jobkit: ai-pipestream/docling-jobkit PR #1
+  branch commit 96190c34244c3acfaeb1a216a278ba01d1968a08
+  merged into main as d4eb548c10212026e9336e87835aad1a116922e0 (merge method,
+  sha guard on 96190c3). main before: 78fe832ddb80dbde60db97624de2bbe12d2b6f74
+  - chunker exception on a document: status FAILURE plus ErrorItem(PIPELINE,
+    BACKEND_FAILURE). Resolves the TODO.
+  - ChunkingError raised when no document could be chunked (task fails).
+    Message "Document chunking failed (<ExceptionType>)." carries type names
+    only, not exception text.
+  - classify_public_task_failure: ChunkingError -> BACKEND_FAILURE, EXECUTION,
+    retryable false. build_public_task_error keeps the message.
+  - local worker also sets task.failure (PublicFailureInfo).
+  - partial failures stay per document and in num_failed.
+  tests: tests/test_chunking_failure_propagation.py (7 tests) and
+    tests/test_local_orchestrator.py::test_chunk_task_fails_when_tokenizer_cannot_load
+  command (CPU, HF_TOKEN unset, Redis 7 container and RQ worker running):
+    CI=true CUDA_VISIBLE_DEVICES= HIP_VISIBLE_DEVICES= \
+    DOCLING_INFERENCE_COMPILE_TORCH_MODELS=0 \
+    .venv/bin/python -m pytest -v --maxfail=0 -p no:cacheprovider tests
+  result on 96190c3: 794 passed, 18 skipped, 0 failed in 138.05s, rc 0
+    baseline on 78fe832 was 786 passed, 18 skipped, 0 failed
+  skips: ray tests (CI), MinIO not running (upstream S3 tests), and the
+    converter and local orchestrator CI-only cases. No MinIO added.
+  failure found while writing tests: the local orchestrator test first failed
+    with ImportError (TaskStatus is in docling_jobkit.datamodel.task_meta, not
+    docling.datamodel.service.tasks). Fixed in the test, full suite rerun.
+  tests fail without the fix: with the jobkit source reverted the new test
+    module errors at import (no ChunkingError).
+
+serve: branch fix/chunker-failure-propagation
+  commits 6c4c2343049138801ce339ef87176fc0f6d2a9df (fix) and
+          5dcc44f8027c9a8372a8752d991db273fe5c9782 (test)
+  main before: 61911c9e60df8054d10e8ed576e04903900459a3
+  - pyproject [tool.uv.sources] docling-jobkit git rev d4eb548; uv.lock
+    regenerated with `uv lock` (only the docling-jobkit entry changed).
+  - GET /v1/result/{task_id} answered 404 "Task result not found" for a failed
+    task on the local orchestrator (no stored failure outcome). It now returns
+    TaskFailureResult from task.failure, or UNKNOWN/EXECUTION with
+    task.error_message when failure is unset, like the gRPC server. An
+    unfinished task still returns 404.
+  - sync REST chunk endpoints: HTTP 500, detail
+    "Document chunking failed (RuntimeError)." (existing _sync_task_result
+    path). Status poll shows task_status failure, error_message and failure.
+  - gRPC chunk RPCs: the typed TaskFailureResult arm of the result oneof,
+    category FAILURE_CATEGORY_BACKEND_FAILURE, phase FAILURE_PHASE_EXECUTION,
+    retryable false, message as above. PollTaskStatus carries error_message and
+    failure. No proto change: TaskFailureResult and PublicFailureInfo already
+    exist and the generated stubs are untouched.
+  - the message says RuntimeError because DocumentChunkerManager wraps the
+    OSError of the tokenizer load in RuntimeError.
+  tests added: tests/test_chunker_failure_surfacing.py (8 tests). The tokenizer
+    load (HuggingFaceTokenizer.from_pretrained) is forced to raise OSError 401
+    and the real local orchestrator is driven through
+    - REST sync hybrid -> 500 and detail
+    - REST async hybrid -> poll failure with typed failure, result
+      TaskFailureResult
+    - REST result for failed task with no PublicFailureInfo -> typed UNKNOWN
+    - REST result for a started task -> 404
+    - gRPC ChunkHybridSource -> failure arm, typed, zero chunks
+    - gRPC ChunkHybridSourceAsync + PollTaskStatus + GetChunkResult -> failure
+    - REST and gRPC hierarchical controls (no tokenizer) still succeed
+    The source is a Markdown file, so no model download is involved.
+  test renamed in tests/test_grpc_pipeline_policy_2026_11_23.py:
+    test_hybrid_chunker_tokenizer_failure_maps_to_empty_grpc_chunks ->
+    test_hybrid_chunker_tokenizer_failure_maps_to_typed_grpc_failure
+    (ChunkingError raised; failure classified and mapped with
+    task_failure_to_proto to the typed proto)
+  targeted run before the full suites: 34 passed (surfacing + policy files)
+
+full suite on 5dcc44f (CPU, HF_TOKEN unset), two disjoint parts, 678 collected
+  part A (all except the eight live REST files), 10:15:12 to 10:22:02 -0500:
+    .venv/bin/python -m pytest --maxfail=0 --color=no --tb=short -q -rs \
+      -p no:cacheprovider --ignore=tests/test_1-file-all-outputs.py \
+      --ignore=tests/test_1-file-async.py --ignore=tests/test_1-url-all-outputs.py \
+      --ignore=tests/test_1-url-async-ws.py --ignore=tests/test_1-url-async.py \
+      --ignore=tests/test_2-files-all-outputs.py \
+      --ignore=tests/test_2-urls-all-outputs.py \
+      --ignore=tests/test_2-urls-async-all-outputs.py
+    result: 660 passed, 8 skipped, 0 failed in 401.61s, rc 0
+    skips: test_grpc_serve.py:378 API key not configured (1);
+      test_rq_worker_metrics.py needs TEST_REDIS_URL (7)
+  part B (live REST, `docling-serve run --host 127.0.0.1 --port 5001`, health
+    ok), 10:22:11 to 10:29:39 -0500:
+    .venv/bin/python -m pytest --maxfail=0 --color=no --tb=short -q -rA \
+      -p no:cacheprovider tests/test_1-file-all-outputs.py \
+      tests/test_1-file-async.py tests/test_1-url-all-outputs.py \
+      tests/test_1-url-async-ws.py tests/test_1-url-async.py \
+      tests/test_2-files-all-outputs.py tests/test_2-urls-all-outputs.py \
+      tests/test_2-urls-async-all-outputs.py
+    result: 10 passed, 0 failed in 447.78s, rc 0
+  combined: 670 passed, 8 skipped, 0 failed (678 collected)
+    previous receipt (2026-11-23): 662 passed, 8 skipped, 0 failed (670)
+
+caveats
+  - Partial chunk failures in a multi-document request still return a
+    chunk response, with the failed document status FAILURE and a typed error
+    on that document. Only "no document could be chunked" fails the task.
+  - Async REST result for a failed task is HTTP 200 with a TaskFailureResult
+    body, the existing convention for stored failures. Sync REST is HTTP 500.
+  - gRPC keeps status OK and reports the failure in the typed result arm, the
+    existing convention for task-scope failures. No gRPC abort code is used.
+  - serve pins the fork jobkit by git rev. Return to the PyPI release once
+    upstream propagates chunk errors.
+  - tests/test_grpc_serve.py::test_chunk_hybrid_source_sync now fails loudly
+    (failure arm, no chunks) when HF_TOKEN is rejected, instead of passing
+    through an empty success.
+
+This receipt is docs only. Tests do not import it.

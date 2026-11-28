@@ -209,6 +209,9 @@ pytorch-triton-rocm = [
   { index = "pytorch-rocm", marker = "sys_platform == 'linux'" },
 ]
 docling-core = { git = "https://github.com/ai-pipestream/docling-core", rev = "be06464f83e4570e1e39f0c5a4cb21c6aa4ff320" }
+# Fork jobkit: fails a chunk task when the chunker raises for every document
+# (ai-pipestream/docling-jobkit#1). Drop once upstream propagates chunk errors.
+docling-jobkit = { git = "https://github.com/ai-pipestream/docling-jobkit", rev = "d4eb548c10212026e9336e87835aad1a116922e0" }
 
 triton-rocm = [
     { index = "pytorch-rocm72", group = "rocm72", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" }

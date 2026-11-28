@@ -421,9 +421,12 @@ def test_jobkit_310_process_exportable_results_zip_name_reaches_grpc(
 # --- chunker that cannot load its tokenizer ------------------------------------
 # On krick test_grpc_serve.py::test_chunk_hybrid_source_sync failed because the
 # HF tokenizer fetch returned 401 (rejected HF_TOKEN in the environment). Jobkit
-# 3.10.0 logs the error, counts the document as failed, and still returns a
-# ChunkedDocumentResult with no chunks (the REST ChunkDocumentResponse has the
-# same shape). This pins what the gRPC mapping returns for that case.
+# 3.10.0 logged the error and returned a ChunkedDocumentResult with no chunks
+# and the document still SUCCESS, on REST and gRPC alike. The fork's jobkit now
+# raises ChunkingError when no document could be chunked, so the task fails and
+# gRPC carries the typed task failure. Per-document failures stay on the
+# document. End-to-end REST and gRPC coverage is in
+# test_chunker_failure_surfacing.py.
 
 
 class _TokenizerUnavailableChunker:
@@ -431,17 +434,22 @@ class _TokenizerUnavailableChunker:
         raise OSError("401 Client Error: tokenizer fetch rejected")
 
 
-def test_hybrid_chunker_tokenizer_failure_maps_to_empty_grpc_chunks(tmp_path):
+def test_hybrid_chunker_tokenizer_failure_maps_to_typed_grpc_failure(tmp_path):
     from docling.datamodel.base_models import ConversionStatus
+    from docling.datamodel.service.responses import FailureCategory, FailurePhase
     from docling_core.types.doc.document import DoclingDocument
     from docling_jobkit.convert.chunking import process_chunkable_results
     from docling_jobkit.datamodel.exportable_document import ExportableDocument
-    from docling_jobkit.datamodel.result import ChunkedDocumentResult
+    from docling_jobkit.datamodel.stored_outcome import StoredFailureOutcome
     from docling_jobkit.datamodel.task import Task
     from docling_jobkit.datamodel.task_meta import TaskType
+    from docling_jobkit.public_errors import (
+        ChunkingError,
+        classify_public_task_failure,
+    )
 
     from docling_serve.grpc.mapping import (
-        set_chunk_result,
+        task_failure_to_proto,
         to_task_sources,
         to_task_target,
     )
@@ -453,28 +461,34 @@ def test_hybrid_chunker_tokenizer_failure_maps_to_empty_grpc_chunks(tmp_path):
         target=to_task_target(types_pb2.Target(inbody=types_pb2.InBodyTarget())),
         convert_options=to_convert_options(types_pb2.ConvertDocumentOptions()),
     )
-    task_result = process_chunkable_results(
-        task=task,
-        exportable_documents=[
-            ExportableDocument(
-                file=PurePosixPath("report.pdf"),
-                status=ConversionStatus.SUCCESS,
-                document=DoclingDocument(name="report"),
-            )
-        ],
-        work_dir=tmp_path,
-        chunker_manager=_TokenizerUnavailableChunker(),
-    )
-    assert isinstance(task_result.result, ChunkedDocumentResult)
-    assert task_result.result.chunks == []
-    assert task_result.num_failed == 1
-    assert task_result.num_succeeded == 0
+    with pytest.raises(ChunkingError) as excinfo:
+        process_chunkable_results(
+            task=task,
+            exportable_documents=[
+                ExportableDocument(
+                    file=PurePosixPath("report.pdf"),
+                    status=ConversionStatus.SUCCESS,
+                    document=DoclingDocument(name="report"),
+                )
+            ],
+            work_dir=tmp_path,
+            chunker_manager=_TokenizerUnavailableChunker(),
+        )
 
-    message = docling_serve_pb2.GetChunkResultResponse()
-    set_chunk_result(message, task_result)
-    assert message.WhichOneof("result") == "response"
-    assert len(message.response.chunks) == 0
-    assert len(message.response.documents) == 1
-    assert message.response.documents[0].status == (
-        types_pb2.ConversionStatus.CONVERSION_STATUS_SUCCESS
+    failure = classify_public_task_failure(
+        excinfo.value, task_id=task.task_id, phase=FailurePhase.EXECUTION
     )
+    outcome = StoredFailureOutcome(failure=failure)
+    message = docling_serve_pb2.GetChunkResultResponse()
+    message.failure.CopyFrom(task_failure_to_proto(outcome.failure))
+    assert message.WhichOneof("result") == "failure"
+    assert failure.category == FailureCategory.BACKEND_FAILURE
+    assert message.failure.failure.category == (
+        types_pb2.FailureCategory.FAILURE_CATEGORY_BACKEND_FAILURE
+    )
+    assert message.failure.failure.phase == (
+        types_pb2.FailurePhase.FAILURE_PHASE_EXECUTION
+    )
+    assert message.failure.failure.message == "Document chunking failed (OSError)."
+    assert message.failure.failure.retryable is False
+    assert len(message.response.chunks) == 0
